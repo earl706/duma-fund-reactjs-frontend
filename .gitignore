@@ -1,0 +1,100 @@
+# ---------------------------------------------------------------------------
+# Frontend — keep secrets, build output, deps, and test noise out of git
+# ---------------------------------------------------------------------------
+
+# Environment & secrets
+.env
+.env.*
+!.env.example
+!.env*.example
+*.pem
+*.key
+credentials.json
+*-credentials.json
+.secrets/
+
+# Dependencies
+node_modules/
+.pnp
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
+
+# Build / bundler artifacts
+dist/
+dist-ssr/
+build/
+.out/
+.output/
+.vercel/
+.netlify/
+.turbo/
+.vite/
+*.tsbuildinfo
+.eslintcache
+.stylelintcache
+*.local
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
+
+# Tests, coverage, and local QA (keep unfinished / private suites off public remotes)
+coverage/
+.nyc_output/
+*.lcov
+tests/
+test/
+__tests__/
+**/__tests__/
+*.test.js
+*.test.jsx
+*.test.ts
+*.test.tsx
+*.spec.js
+*.spec.jsx
+*.spec.ts
+*.spec.tsx
+playwright-report/
+test-results/
+cypress/videos/
+cypress/screenshots/
+cypress/downloads/
+.storybook-out/
+storybook-static/
+
+# Caches
+.cache/
+.parcel-cache/
+.fusebox/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+*~
+*.bak
+*.tmp
+*.temp
+
+# Local scratch / debug
+scratch/
+tmp/
+temp/
+.debug/
