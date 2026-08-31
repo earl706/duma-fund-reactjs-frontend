@@ -11,3 +11,4 @@ export { StatCard } from './StatCard';
 export { Avatar } from './Avatar';
 export { Pagination } from './Pagination';
 export { ListToolbar } from './ListToolbar';
+export { DataSheet } from './DataSheet';

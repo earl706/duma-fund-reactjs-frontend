@@ -1,6 +1,5 @@
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
-import { List, Pencil, Plus, Trash2 } from 'lucide-react';
+import { List, Plus } from 'lucide-react';
 
 import { costListsApi } from '../lib/resources';
 import { STATUS_TONE } from '../lib/status';
@@ -11,21 +10,19 @@ import { PageHeader } from '../components/layout/PageHeader';
 import {
 	Badge,
 	Button,
-	Card,
-	CardBody,
+	DataSheet,
 	EmptyState,
-	Input,
 	ListToolbar,
 	LoadingScreen,
 	Modal,
-	Pagination,
-	Select,
-	Textarea
+	Pagination
 } from '../components/ui';
 
 const SORT_OPTIONS = [
 	{ value: '-date_created', label: 'Newest first' },
 	{ value: 'date_created', label: 'Oldest first' },
+	{ value: '-date_effective', label: 'Effective (newest)' },
+	{ value: 'date_effective', label: 'Effective (oldest)' },
 	{ value: '-date_last_modified', label: 'Recently modified' },
 	{ value: 'title', label: 'Title A–Z' },
 	{ value: '-title', label: 'Title Z–A' },
@@ -39,6 +36,11 @@ const STATUS_OPTIONS = [
 	{ value: 'archived', label: 'Archived' }
 ];
 
+const STATUS_SELECT = [
+	{ value: 'active', label: 'Active' },
+	{ value: 'archived', label: 'Archived' }
+];
+
 function todayISO() {
 	const d = new Date();
 	const y = d.getFullYear();
@@ -47,12 +49,69 @@ function todayISO() {
 	return `${y}-${m}-${day}`;
 }
 
-const emptyForm = () => ({
-	title: '',
+const defaultListPayload = () => ({
+	title: 'Untitled',
 	description: '',
 	status: 'active',
-	date_created: todayISO()
+	date_created: todayISO(),
+	date_effective: todayISO()
 });
+
+const LIST_COLUMNS = [
+	{
+		key: 'open',
+		label: '',
+		type: 'action-link',
+		className: 'w-10',
+		linkTo: (row) => `/lists/${row.id}`,
+		linkAriaLabel: (row) => `Open ${row.title || 'list'}`
+	},
+	{ key: 'title', label: 'Title', editable: true, required: true, className: 'w-[16%]' },
+	{ key: 'description', label: 'Description', editable: true, className: 'w-[20%]' },
+	{
+		key: 'total_cost',
+		label: 'Total',
+		align: 'right',
+		className: 'w-[10%]',
+		getDisplay: (row) => formatCost(row.total_cost)
+	},
+	{
+		key: 'status',
+		label: 'Status',
+		editable: true,
+		type: 'select',
+		options: STATUS_SELECT,
+		className: 'w-[9%]',
+		render: (row) => (
+			<Badge tone={STATUS_TONE[row.status] || 'neutral'} className="capitalize">
+				{row.status}
+			</Badge>
+		)
+	},
+	{
+		key: 'date_effective',
+		label: 'Effective',
+		editable: true,
+		inputType: 'date',
+		required: true,
+		className: 'w-[12%]',
+		getDisplay: (row) => (row.date_effective ? formatDate(row.date_effective) : '—'),
+		getDraft: (row) => row.date_effective || ''
+	},
+	{
+		key: 'date_created',
+		label: 'Created',
+		className: 'w-[11%]',
+		getDisplay: (row) => (row.date_created ? formatDate(row.date_created) : '—')
+	},
+	{
+		key: 'date_last_modified',
+		label: 'Modified',
+		className: 'w-[11%]',
+		getDisplay: (row) => (row.date_last_modified ? formatDate(row.date_last_modified) : '—')
+	},
+	{ key: 'actions', label: '', type: 'action-delete', className: 'w-10' }
+];
 
 export default function CostListsPage() {
 	const {
@@ -70,56 +129,38 @@ export default function CostListsPage() {
 	const { data, isLoading, isError } = costListsApi.useList(queryParams);
 	const lists = data?.results || [];
 
-	const [modalOpen, setModalOpen] = useState(false);
-	const [editing, setEditing] = useState(null);
-	const [form, setForm] = useState(emptyForm);
+	const [deleteTarget, setDeleteTarget] = useState(null);
+	const [autoEdit, setAutoEdit] = useState(null);
 
 	const createList = costListsApi.useCreate({
-		onSuccess: () => {
+		onSuccess: (created) => {
 			toast.success('List created.');
-			closeModal();
+			if (created?.id != null) {
+				setAutoEdit({ id: created.id, field: 'title', key: `${created.id}-${Date.now()}` });
+			}
 		}
 	});
-	const updateList = costListsApi.useUpdate({
-		onSuccess: () => {
-			toast.success('List updated.');
-			closeModal();
-		}
-	});
+	const updateList = costListsApi.useUpdate();
 	const removeList = costListsApi.useRemove({
-		onSuccess: () => toast.success('List deleted.')
+		onSuccess: () => {
+			toast.success('List deleted.');
+			setDeleteTarget(null);
+		}
 	});
 
-	const openCreate = () => {
-		setEditing(null);
-		setForm(emptyForm());
-		setModalOpen(true);
+	const addList = () => {
+		if (createList.isPending) return;
+		createList.mutate(defaultListPayload());
 	};
 
-	const openEdit = (list) => {
-		setEditing(list);
-		setForm({
-			title: list.title || '',
-			description: list.description || '',
-			status: list.status || 'active',
-			date_created: list.date_created || todayISO()
-		});
-		setModalOpen(true);
+	const commitCell = ({ id, field, value }) => {
+		updateList.mutate({ id, [field]: value });
 	};
 
-	const closeModal = () => {
-		setModalOpen(false);
-		setEditing(null);
+	const confirmDelete = () => {
+		if (!deleteTarget) return;
+		removeList.mutate(deleteTarget.id);
 	};
-
-	const submit = (e) => {
-		e.preventDefault();
-		if (editing) updateList.mutate({ id: editing.id, ...form });
-		else createList.mutate(form);
-	};
-
-	const setField = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }));
-	const saving = createList.isPending || updateList.isPending;
 
 	return (
 		<div>
@@ -128,7 +169,7 @@ export default function CostListsPage() {
 				icon={List}
 				description="Named groups of costs — groceries, bills, or a single payment."
 				actions={
-					<Button onClick={openCreate}>
+					<Button onClick={addList} loading={createList.isPending}>
 						<Plus size={16} /> New list
 					</Button>
 				}
@@ -160,67 +201,19 @@ export default function CostListsPage() {
 					title="Could not load lists"
 					description="Something went wrong while fetching your lists."
 				/>
-			) : lists.length === 0 ? (
-				<EmptyState
-					icon={List}
-					title="No lists yet"
-					description="Create your first list to get started."
-					action={
-						<Button onClick={openCreate}>
-							<Plus size={16} /> New list
-						</Button>
-					}
-				/>
 			) : (
-				<div className="space-y-3">
-					{lists.map((list) => (
-						<Card key={list.id}>
-							<CardBody className="flex items-start justify-between gap-4 pt-5">
-								<div className="min-w-0">
-									<div className="flex items-center gap-2">
-										<Link
-											to={`/lists/${list.id}`}
-											className="text-fg truncate font-medium hover:underline"
-										>
-											{list.title}
-										</Link>
-										<Badge tone={STATUS_TONE[list.status] || 'neutral'} className="capitalize">
-											{list.status}
-										</Badge>
-									</div>
-									{list.description && (
-										<p className="text-muted mt-1 line-clamp-2 text-sm">{list.description}</p>
-									)}
-									<p className="text-muted mt-2 text-xs">
-										Total {formatCost(list.total_cost)}
-										{list.date_created ? ` · ${formatDate(list.date_created)}` : ''}
-										{list.date_last_modified
-											? ` · modified ${formatDate(list.date_last_modified)}`
-											: ''}
-									</p>
-								</div>
-								<div className="flex shrink-0 items-center gap-1">
-									<Button
-										variant="ghost"
-										size="icon"
-										onClick={() => openEdit(list)}
-										aria-label={`Edit ${list.title}`}
-									>
-										<Pencil size={16} />
-									</Button>
-									<Button
-										variant="ghost"
-										size="icon"
-										onClick={() => removeList.mutate(list.id)}
-										aria-label={`Delete ${list.title}`}
-									>
-										<Trash2 size={16} />
-									</Button>
-								</div>
-							</CardBody>
-						</Card>
-					))}
-				</div>
+				<DataSheet
+					rows={lists}
+					columns={LIST_COLUMNS}
+					onCommit={commitCell}
+					onAdd={addList}
+					onRequestDelete={setDeleteTarget}
+					adding={createList.isPending}
+					saving={updateList.isPending}
+					autoEdit={autoEdit}
+					addLabel="New list"
+					emptyMessage="No lists yet. Add a row to get started."
+				/>
 			)}
 
 			<Pagination
@@ -232,46 +225,29 @@ export default function CostListsPage() {
 			/>
 
 			<Modal
-				open={modalOpen}
-				onClose={closeModal}
-				title={editing ? 'Edit list' : 'New list'}
+				open={Boolean(deleteTarget)}
+				onClose={() => !removeList.isPending && setDeleteTarget(null)}
+				title="Delete list"
+				size="sm"
 				footer={
 					<>
-						<Button variant="secondary" onClick={closeModal}>
+						<Button
+							variant="secondary"
+							onClick={() => setDeleteTarget(null)}
+							disabled={removeList.isPending}
+						>
 							Cancel
 						</Button>
-						<Button type="submit" form="list-form" loading={saving} disabled={!form.title.trim()}>
-							{editing ? 'Save changes' : 'Create list'}
+						<Button variant="danger" loading={removeList.isPending} onClick={confirmDelete}>
+							Delete
 						</Button>
 					</>
 				}
 			>
-				<form id="list-form" onSubmit={submit} className="space-y-4">
-					<Input
-						label="Title"
-						value={form.title}
-						onChange={setField('title')}
-						placeholder="List title"
-						required
-					/>
-					<Textarea
-						label="Description"
-						value={form.description}
-						onChange={setField('description')}
-						placeholder="Optional description"
-					/>
-					<Input
-						label="Date created"
-						type="date"
-						value={form.date_created}
-						onChange={setField('date_created')}
-						required
-					/>
-					<Select label="Status" value={form.status} onChange={setField('status')}>
-						<option value="active">Active</option>
-						<option value="archived">Archived</option>
-					</Select>
-				</form>
+				<p className="text-muted text-sm">
+					Delete <span className="text-fg font-medium">{deleteTarget?.title || 'this list'}</span>?
+					All items on it will be removed. This cannot be undone.
+				</p>
 			</Modal>
 		</div>
 	);
