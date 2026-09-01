@@ -9,6 +9,9 @@ import { Button } from './Button';
  * Spreadsheet-style data table.
  * Double-click an editable cell to edit; Enter commits; Escape / blur cancels.
  * Desktop: fixed layout with truncated cells (no horizontal scroll).
+ *
+ * Column type `qty-unit`: number + unit select in one cell. Commit sends
+ * `{ id, field, value, patch: { [field]: qty, [unitKey]: unit } }`.
  */
 export function DataSheet({
 	rows,
@@ -25,7 +28,9 @@ export function DataSheet({
 }) {
 	const [edit, setEdit] = useState(null);
 	const [draft, setDraft] = useState('');
+	const [draftUnit, setDraftUnit] = useState('');
 	const inputRef = useRef(null);
+	const editorRef = useRef(null);
 	const skipBlurCancel = useRef(false);
 	const autoEditKey = useRef(null);
 
@@ -37,14 +42,22 @@ export function DataSheet({
 		return row[field] != null ? String(row[field]) : '';
 	};
 
+	const getUnitDraft = (row, col) => {
+		const unitKey = col?.unitKey || 'unit';
+		if (col?.getUnitDraft) return col.getUnitDraft(row);
+		return row[unitKey] != null ? String(row[unitKey]) : col?.unitOptions?.[0]?.value || '';
+	};
+
 	useEffect(() => {
 		if (!autoEdit?.id || !autoEdit?.field || !autoEdit?.key) return;
 		if (autoEditKey.current === autoEdit.key) return;
 		const row = rows.find((r) => r.id === autoEdit.id);
 		if (!row) return;
 		autoEditKey.current = autoEdit.key;
+		const col = columns.find((c) => c.key === autoEdit.field);
 		setEdit({ id: autoEdit.id, field: autoEdit.field });
 		setDraft(getDraft(row, autoEdit.field));
+		if (col?.type === 'qty-unit') setDraftUnit(getUnitDraft(row, col));
 		// eslint-disable-next-line react-hooks/exhaustive-deps -- only re-enter on autoEdit key / row presence
 	}, [autoEdit, rows]);
 
@@ -58,16 +71,19 @@ export function DataSheet({
 
 	const startEdit = (row, field) => {
 		if (!editableKeys.has(field) || saving) return;
+		const col = columns.find((c) => c.key === field);
 		setEdit({ id: row.id, field });
 		setDraft(getDraft(row, field));
+		if (col?.type === 'qty-unit') setDraftUnit(getUnitDraft(row, col));
 	};
 
 	const cancelEdit = () => {
 		setEdit(null);
 		setDraft('');
+		setDraftUnit('');
 	};
 
-	const commitEdit = (overrideValue) => {
+	const commitEdit = (overrideValue, overrideUnit) => {
 		if (!edit) return;
 		const row = rows.find((r) => r.id === edit.id);
 		if (!row) {
@@ -75,6 +91,32 @@ export function DataSheet({
 			return;
 		}
 		const col = columns.find((c) => c.key === edit.field);
+
+		if (col?.type === 'qty-unit') {
+			const unitKey = col.unitKey || 'unit';
+			const nextQty = overrideValue !== undefined ? overrideValue : draft;
+			const nextUnit = overrideUnit !== undefined ? overrideUnit : draftUnit;
+			const prevQty = getDraft(row, edit.field);
+			const prevUnit = getUnitDraft(row, col);
+			const qtyNormalized = String(nextQty).trim();
+			if (col.required && !qtyNormalized) {
+				cancelEdit();
+				return;
+			}
+			if (String(qtyNormalized) === String(prevQty) && String(nextUnit) === String(prevUnit)) {
+				cancelEdit();
+				return;
+			}
+			onCommit?.({
+				id: row.id,
+				field: edit.field,
+				value: qtyNormalized,
+				patch: { [edit.field]: qtyNormalized, [unitKey]: nextUnit }
+			});
+			cancelEdit();
+			return;
+		}
+
 		const next = overrideValue !== undefined ? overrideValue : draft;
 		const prev = getDraft(row, edit.field);
 		const shouldTrim = col?.inputType !== 'number';
@@ -103,11 +145,12 @@ export function DataSheet({
 		}
 	};
 
-	const onBlur = () => {
+	const onBlur = (e) => {
 		if (skipBlurCancel.current) {
 			skipBlurCancel.current = false;
 			return;
 		}
+		if (editorRef.current?.contains(e.relatedTarget)) return;
 		cancelEdit();
 	};
 
@@ -189,6 +232,48 @@ export function DataSheet({
 
 									if (isEditing(row.id, col.key)) {
 										const inputType = col.inputType || 'text';
+
+										if (col.type === 'qty-unit') {
+											return (
+												<td key={col.key} className={cn('p-0', col.className)}>
+													<div
+														ref={editorRef}
+														className="border-primary flex h-9 w-full items-stretch border"
+													>
+														<input
+															ref={inputRef}
+															type="number"
+															min={col.min ?? '0'}
+															step={col.step ?? '0.01'}
+															className="bg-surface text-fg min-w-0 flex-1 px-2 text-right text-sm tabular-nums focus:outline-none"
+															value={draft}
+															onChange={(e) => setDraft(e.target.value)}
+															onKeyDown={onKeyDown}
+															onBlur={onBlur}
+															aria-label="Quantity"
+														/>
+														<select
+															className="border-line bg-surface-2 text-fg w-17 shrink-0 border-l px-1 text-xs focus:outline-none"
+															value={draftUnit}
+															onChange={(e) => {
+																skipBlurCancel.current = true;
+																commitEdit(draft, e.target.value);
+															}}
+															onKeyDown={onKeyDown}
+															onBlur={onBlur}
+															aria-label="Unit"
+														>
+															{(col.unitOptions || []).map((opt) => (
+																<option key={opt.value} value={opt.value}>
+																	{opt.label}
+																</option>
+															))}
+														</select>
+													</div>
+												</td>
+											);
+										}
+
 										return (
 											<td key={col.key} className={cn('p-0', col.className)}>
 												{col.type === 'select' ? (

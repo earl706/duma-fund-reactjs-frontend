@@ -76,7 +76,7 @@ export function renderGroceryReceiptCanvas(list, items) {
 	const itemSize = 16;
 	const totalSize = 18;
 	const checkSize = 16;
-	const qtyCol = 88;
+	const qtyCol = 110;
 
 	const measure = document.createElement('canvas').getContext('2d');
 	measure.font = `600 ${titleSize}px Georgia, "Times New Roman", serif`;
@@ -86,9 +86,11 @@ export function renderGroceryReceiptCanvas(list, items) {
 	const itemBlocks = items.map((item) => {
 		const title = item.title || 'Untitled';
 		const qty = formatQty(item.quantity);
+		const unit = item.unit || 'pcs';
+		const qtyLabel = `${qty} ${unit}`;
 		const textMax = width - padX * 2 - checkSize - 16 - qtyCol;
 		const lines = wrapText(measure, title, textMax);
-		return { lines, qty, lineTotal: Number(item.cost || 0) * Number(item.quantity || 0) };
+		return { lines, qtyLabel, lineTotal: Number(item.cost || 0) * Number(item.quantity || 0) };
 	});
 
 	let contentHeight = padY + titleLines.length * (titleSize + 6) + 8 + metaSize + 24 + 2 + 16;
@@ -165,7 +167,7 @@ export function renderGroceryReceiptCanvas(list, items) {
 
 		ctx.fillStyle = '#6b6779';
 		ctx.textAlign = 'right';
-		ctx.fillText(`× ${block.qty}`, width - padX, rowTop);
+		ctx.fillText(`× ${block.qtyLabel}`, width - padX, rowTop);
 		ctx.textAlign = 'left';
 
 		y = rowTop + rowHeight + lineGap;

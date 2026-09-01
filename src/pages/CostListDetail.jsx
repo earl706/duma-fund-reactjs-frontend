@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, ImageDown, List, Plus } from 'lucide-react';
+import { ArrowLeft, ImageDown, List, Plus, ScanLine } from 'lucide-react';
+import { useQueryClient } from '@tanstack/react-query';
 
 import { costItemsApi, costListsApi } from '../lib/resources';
+import { mediaUrl } from '../lib/receiptScan';
 import { STATUS_TONE } from '../lib/status';
 import { formatCost, formatDate } from '../lib/format';
 import {
@@ -17,6 +19,7 @@ import {
 import { toast } from '../stores/toastStore';
 import { useListControls } from '../hooks/useListControls';
 import { GroceryExportModal } from '../components/costs/GroceryExportModal';
+import { ReceiptImportModal } from '../components/costs/ReceiptImportModal';
 import { PageHeader } from '../components/layout/PageHeader';
 import {
 	Badge,
@@ -36,7 +39,7 @@ const SORT_OPTIONS = [
 	{ value: 'date_effective', label: 'Effective (oldest)' },
 	{ value: 'title', label: 'Title A–Z' },
 	{ value: '-title', label: 'Title Z–A' },
-	{ value: '-cost', label: 'Highest cost' },
+	{ value: '-cost', label: 'Highest price' },
 	{ value: 'status', label: 'Status' }
 ];
 
@@ -51,6 +54,14 @@ const STATUS_SELECT = [
 	{ value: 'archived', label: 'Archived' }
 ];
 
+const UNIT_OPTIONS = [
+	{ value: 'pcs', label: 'pcs' },
+	{ value: 'kg', label: 'kg' },
+	{ value: 'g', label: 'g' },
+	{ value: 'L', label: 'L' },
+	{ value: 'mL', label: 'mL' }
+];
+
 function todayISO() {
 	const d = new Date();
 	const y = d.getFullYear();
@@ -61,10 +72,10 @@ function todayISO() {
 
 const defaultItemPayload = () => ({
 	title: 'Untitled',
-	description: '',
 	status: 'active',
 	cost: '0.00',
 	quantity: '1.00',
+	unit: 'pcs',
 	date_created: todayISO(),
 	date_effective: todayISO()
 });
@@ -73,16 +84,22 @@ function lineTotal(item) {
 	return Number(item.cost || 0) * Number(item.quantity || 0);
 }
 
+function formatQty(value) {
+	return Number(value ?? 0).toLocaleString(undefined, {
+		minimumFractionDigits: 0,
+		maximumFractionDigits: 2
+	});
+}
+
 const ITEM_COLUMNS = [
-	{ key: 'title', label: 'Title', editable: true, required: true, className: 'w-[14%]' },
-	{ key: 'description', label: 'Description', editable: true, className: 'w-[16%]' },
+	{ key: 'title', label: 'Title', editable: true, required: true, className: 'w-[20%]' },
 	{
 		key: 'cost',
-		label: 'Cost',
+		label: 'Price',
 		editable: true,
 		align: 'right',
 		inputType: 'number',
-		className: 'w-[9%]',
+		className: 'w-[10%]',
 		getDisplay: (row) => formatCost(row.cost),
 		getDraft: (row) => String(row.cost ?? '')
 	},
@@ -90,21 +107,20 @@ const ITEM_COLUMNS = [
 		key: 'quantity',
 		label: 'Qty',
 		editable: true,
+		type: 'qty-unit',
+		unitKey: 'unit',
+		unitOptions: UNIT_OPTIONS,
 		align: 'right',
-		inputType: 'number',
-		className: 'w-[7%]',
-		getDisplay: (row) =>
-			Number(row.quantity ?? 0).toLocaleString(undefined, {
-				minimumFractionDigits: 0,
-				maximumFractionDigits: 2
-			}),
-		getDraft: (row) => String(row.quantity ?? '')
+		className: 'w-[12%]',
+		getDisplay: (row) => `${formatQty(row.quantity)} ${row.unit || 'pcs'}`,
+		getDraft: (row) => String(row.quantity ?? ''),
+		getUnitDraft: (row) => row.unit || 'pcs'
 	},
 	{
 		key: 'line_total',
 		label: 'Total',
 		align: 'right',
-		className: 'w-[9%]',
+		className: 'w-[10%]',
 		getDisplay: (row) => formatCost(lineTotal(row))
 	},
 	{
@@ -113,7 +129,7 @@ const ITEM_COLUMNS = [
 		editable: true,
 		type: 'select',
 		options: STATUS_SELECT,
-		className: 'w-[9%]',
+		className: 'w-[10%]',
 		render: (row) => (
 			<Badge tone={STATUS_TONE[row.status] || 'neutral'} className="capitalize">
 				{row.status}
@@ -148,6 +164,7 @@ const ITEM_COLUMNS = [
 export default function CostListDetailPage() {
 	const { id } = useParams();
 	const navigate = useNavigate();
+	const queryClient = useQueryClient();
 	const listId = id ? Number(id) : null;
 
 	const { data: list, isLoading: listLoading, isError: listError } = costListsApi.useDetail(listId);
@@ -173,6 +190,7 @@ export default function CostListDetailPage() {
 	const [deleteTarget, setDeleteTarget] = useState(null);
 	const [autoEdit, setAutoEdit] = useState(null);
 	const [exportOpen, setExportOpen] = useState(false);
+	const [importOpen, setImportOpen] = useState(false);
 	const [exporting, setExporting] = useState(false);
 	const [previewUrl, setPreviewUrl] = useState('');
 	const [exportBlob, setExportBlob] = useState(null);
@@ -207,8 +225,8 @@ export default function CostListDetailPage() {
 		createItem.mutate(defaultItemPayload());
 	};
 
-	const commitCell = ({ id: itemId, field, value }) => {
-		updateItem.mutate({ id: itemId, [field]: value });
+	const commitCell = ({ id: itemId, field, value, patch }) => {
+		updateItem.mutate(patch ? { id: itemId, ...patch } : { id: itemId, [field]: value });
 	};
 
 	const confirmDelete = () => {
@@ -301,6 +319,9 @@ export default function CostListDetailPage() {
 				description={list.description || 'Items on this list.'}
 				actions={
 					<>
+						<Button variant="secondary" onClick={() => setImportOpen(true)}>
+							<ScanLine size={16} /> Scan receipt
+						</Button>
 						<Button
 							variant="secondary"
 							onClick={openExport}
@@ -329,6 +350,16 @@ export default function CostListDetailPage() {
 				)}
 				{list.date_last_modified && (
 					<span className="text-muted">Modified {formatDate(list.date_last_modified)}</span>
+				)}
+				{list.receipt_image && (
+					<a
+						href={mediaUrl(list.receipt_image)}
+						target="_blank"
+						rel="noopener noreferrer"
+						className="text-primary hover:underline"
+					>
+						View receipt
+					</a>
 				)}
 			</div>
 
@@ -416,6 +447,17 @@ export default function CostListDetailPage() {
 				sharing={sharing}
 				onDownload={downloadExport}
 				onShare={shareExport}
+			/>
+
+			<ReceiptImportModal
+				open={importOpen}
+				onClose={() => setImportOpen(false)}
+				listId={listId}
+				initialReceiptUrl={list.receipt_image}
+				onImported={() => {
+					queryClient.invalidateQueries({ queryKey: ['cost-items', listId] });
+					queryClient.invalidateQueries({ queryKey: ['cost-lists'] });
+				}}
 			/>
 		</div>
 	);
