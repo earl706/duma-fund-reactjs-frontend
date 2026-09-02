@@ -1,8 +1,8 @@
 import { NavLink } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Zap } from 'lucide-react';
 
 import { cn } from '../../lib/format';
+import { AppIcon } from '../ui/AppIcon';
 import { useUIStore } from '../../stores/uiStore';
 import { navGroups } from './navItems';
 
@@ -41,9 +41,7 @@ export function SidebarContent() {
 	return (
 		<div className="flex h-full flex-col gap-6 p-4">
 			<div className="flex items-center gap-2 px-2 pt-1">
-				<div className="bg-primary text-primary-fg flex h-9 w-9 items-center justify-center rounded-sm">
-					<Zap size={18} />
-				</div>
+				<AppIcon size={36} className="shrink-0" />
 				<span className="text-fg text-lg font-bold tracking-tight">DumaFund</span>
 			</div>
 

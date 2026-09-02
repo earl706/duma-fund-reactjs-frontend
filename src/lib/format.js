@@ -8,6 +8,11 @@ export function formatDate(value, pattern = 'MMM d, yyyy') {
 	return format(date, pattern);
 }
 
+/** Compact date for spreadsheet cells (e.g. 02/09/26). */
+export function formatDateShort(value) {
+	return formatDate(value, 'dd/MM/yy');
+}
+
 /** Human, context-aware due-date label. */
 export function formatDue(value) {
 	if (!value) return null;

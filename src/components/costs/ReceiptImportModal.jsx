@@ -123,7 +123,7 @@ export function ReceiptImportModal({
 			open={open}
 			onClose={handleClose}
 			title="Scan receipt"
-			size="lg"
+			size="xl"
 			footer={
 				<>
 					<Button variant="secondary" onClick={handleClose} disabled={scanning || importing}>
@@ -171,19 +171,19 @@ export function ReceiptImportModal({
 					/>
 
 					<div className="border-line overflow-x-auto rounded-md border">
-						<table className="w-full min-w-[640px] border-collapse text-sm">
+						<table className="w-full min-w-[640px] table-fixed border-collapse text-sm">
 							<thead>
 								<tr className="bg-surface-2 border-line border-b">
-									<th className="text-muted px-2 py-2 text-left text-xs font-semibold uppercase">
+									<th className="text-muted w-[46%] px-2 py-2 text-left text-xs font-semibold uppercase">
 										Title
 									</th>
-									<th className="text-muted px-2 py-2 text-right text-xs font-semibold uppercase">
+									<th className="text-muted w-24 px-2 py-2 text-right text-xs font-semibold uppercase">
 										Price
 									</th>
-									<th className="text-muted px-2 py-2 text-right text-xs font-semibold uppercase">
+									<th className="text-muted w-24 px-2 py-2 text-right text-xs font-semibold uppercase">
 										Qty
 									</th>
-									<th className="text-muted px-2 py-2 text-left text-xs font-semibold uppercase">
+									<th className="text-muted w-24 px-2 py-2 text-left text-xs font-semibold uppercase">
 										Unit
 									</th>
 									<th className="w-10" />
@@ -192,7 +192,7 @@ export function ReceiptImportModal({
 							<tbody>
 								{rows.map((row) => (
 									<tr key={row._key} className="border-line border-b last:border-b-0">
-										<td className="p-1">
+										<td className="w-[46%] p-1">
 											<input
 												className="border-line bg-surface text-fg w-full rounded-sm border px-2 py-1.5 text-sm"
 												value={row.title}
@@ -201,7 +201,7 @@ export function ReceiptImportModal({
 												}
 											/>
 										</td>
-										<td className="p-1">
+										<td className="w-24 p-1">
 											<input
 												type="number"
 												min="0"
@@ -213,7 +213,7 @@ export function ReceiptImportModal({
 												}
 											/>
 										</td>
-										<td className="p-1">
+										<td className="w-24 p-1">
 											<input
 												type="number"
 												min="0"
@@ -225,7 +225,7 @@ export function ReceiptImportModal({
 												}
 											/>
 										</td>
-										<td className="p-1">
+										<td className="w-24 p-1">
 											<select
 												className="border-line bg-surface text-fg w-full rounded-sm border px-2 py-1.5 text-sm"
 												value={row.unit}
@@ -264,8 +264,8 @@ export function ReceiptImportModal({
 			) : (
 				<div className="space-y-3">
 					<p className="text-muted text-sm">
-						Upload a photo of a receipt. OpenAI will extract line items for you to review before
-						adding them to this list. The image is saved on the list.
+						Upload a photo of a receipt. AI will extract line items for you to review before adding
+						them to this list. The image is saved on the list.
 					</p>
 					{previewUrl && (
 						<div className="bg-surface-2 flex justify-center rounded-md p-3">

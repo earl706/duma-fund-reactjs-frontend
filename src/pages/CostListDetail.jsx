@@ -1,12 +1,13 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, ImageDown, List, Plus, ScanLine } from 'lucide-react';
-import { useQueryClient } from '@tanstack/react-query';
 
 import { costItemsApi, costListsApi } from '../lib/resources';
+import { fetchAllPages } from '../lib/fetchAll';
 import { mediaUrl } from '../lib/receiptScan';
 import { STATUS_TONE } from '../lib/status';
-import { formatCost, formatDate } from '../lib/format';
+import { formatCost, formatDate, formatDateShort } from '../lib/format';
 import {
 	canShareImageFile,
 	canvasToBlob,
@@ -29,7 +30,7 @@ import {
 	ListToolbar,
 	LoadingScreen,
 	Modal,
-	Pagination
+	RecordInfoModal
 } from '../components/ui';
 
 const SORT_OPTIONS = [
@@ -91,8 +92,34 @@ function formatQty(value) {
 	});
 }
 
+function itemInfoFields(item) {
+	if (!item) return [];
+	return [
+		{ label: 'Title', value: item.title },
+		{
+			label: 'Status',
+			value: (
+				<Badge tone={STATUS_TONE[item.status] || 'neutral'} className="capitalize">
+					{item.status}
+				</Badge>
+			)
+		},
+		{ label: 'Price', value: formatCost(item.cost) },
+		{ label: 'Quantity', value: `${formatQty(item.quantity)} ${item.unit || 'pcs'}` },
+		{ label: 'Line total', value: formatCost(lineTotal(item)) },
+		{ label: 'Effective', value: item.date_effective ? formatDate(item.date_effective) : '—' },
+		{ label: 'Created', value: item.date_created ? formatDate(item.date_created) : '—' },
+		{
+			label: 'Modified',
+			value: item.date_last_modified ? formatDate(item.date_last_modified) : '—'
+		},
+		{ label: 'ID', value: item.id },
+		{ label: 'UUID', value: item.uuid }
+	];
+}
+
 const ITEM_COLUMNS = [
-	{ key: 'title', label: 'Title', editable: true, required: true, className: 'w-[20%]' },
+	{ key: 'title', label: 'Title', editable: true, required: true, className: 'w-[34%]' },
 	{
 		key: 'cost',
 		label: 'Price',
@@ -125,16 +152,11 @@ const ITEM_COLUMNS = [
 	},
 	{
 		key: 'status',
-		label: 'Status',
+		label: '',
 		editable: true,
-		type: 'select',
+		type: 'status-icon',
 		options: STATUS_SELECT,
-		className: 'w-[10%]',
-		render: (row) => (
-			<Badge tone={STATUS_TONE[row.status] || 'neutral'} className="capitalize">
-				{row.status}
-			</Badge>
-		)
+		className: 'w-8'
 	},
 	{
 		key: 'date_effective',
@@ -142,23 +164,17 @@ const ITEM_COLUMNS = [
 		editable: true,
 		inputType: 'date',
 		required: true,
-		className: 'w-[12%]',
-		getDisplay: (row) => (row.date_effective ? formatDate(row.date_effective) : '—'),
+		className: 'w-[11%]',
+		getDisplay: (row) => (row.date_effective ? formatDateShort(row.date_effective) : '—'),
 		getDraft: (row) => row.date_effective || ''
 	},
 	{
-		key: 'date_created',
-		label: 'Created',
-		className: 'w-[10%]',
-		getDisplay: (row) => (row.date_created ? formatDate(row.date_created) : '—')
-	},
-	{
-		key: 'date_last_modified',
-		label: 'Modified',
-		className: 'w-[10%]',
-		getDisplay: (row) => (row.date_last_modified ? formatDate(row.date_last_modified) : '—')
-	},
-	{ key: 'actions', label: '', type: 'action-delete', className: 'w-10' }
+		key: 'actions',
+		label: '',
+		type: 'actions',
+		actions: ['info', 'delete'],
+		className: 'w-[4.5rem]'
+	}
 ];
 
 export default function CostListDetailPage() {
@@ -169,25 +185,31 @@ export default function CostListDetailPage() {
 
 	const { data: list, isLoading: listLoading, isError: listError } = costListsApi.useDetail(listId);
 
+	const { search, setSearch, ordering, setOrdering, filters, setFilter, queryParams } =
+		useListControls({
+			defaultOrdering: 'title'
+		});
+
+	const listParams = useMemo(() => {
+		const { page: _page, page_size: _pageSize, ...rest } = queryParams;
+		return rest;
+	}, [queryParams]);
+
 	const {
-		search,
-		setSearch,
-		ordering,
-		setOrdering,
-		filters,
-		setFilter,
-		queryParams,
-		setPage,
-		page
-	} = useListControls({ defaultOrdering: '-date_created' });
+		data: items = [],
+		isLoading,
+		isError
+	} = useQuery({
+		queryKey: ['cost-items', listId, 'all', listParams],
+		queryFn: () => fetchAllPages(`/cost-lists/${listId}/items/`, listParams),
+		enabled: listId != null
+	});
 
-	const { data, isLoading, isError } = costItemsApi.useList(listId, queryParams);
-	const items = data?.results || [];
-
-	const { data: itemCountData } = costItemsApi.useList(listId, { page_size: 1 });
-	const hasItems = (itemCountData?.count || 0) > 0;
+	const hasItems = items.length > 0;
 
 	const [deleteTarget, setDeleteTarget] = useState(null);
+	const [bulkDeleteIds, setBulkDeleteIds] = useState(null);
+	const [infoTarget, setInfoTarget] = useState(null);
 	const [autoEdit, setAutoEdit] = useState(null);
 	const [exportOpen, setExportOpen] = useState(false);
 	const [importOpen, setImportOpen] = useState(false);
@@ -197,6 +219,7 @@ export default function CostListDetailPage() {
 	const [exportName, setExportName] = useState('');
 	const [canShare, setCanShare] = useState(false);
 	const [sharing, setSharing] = useState(false);
+	const [bulkDeleting, setBulkDeleting] = useState(false);
 
 	useEffect(() => {
 		return () => {
@@ -232,6 +255,22 @@ export default function CostListDetailPage() {
 	const confirmDelete = () => {
 		if (!deleteTarget) return;
 		removeItem.mutate(deleteTarget.id);
+	};
+
+	const confirmBulkDelete = async () => {
+		if (!bulkDeleteIds?.length) return;
+		setBulkDeleting(true);
+		try {
+			await Promise.all(bulkDeleteIds.map((itemId) => removeItem.mutateAsync(itemId)));
+			toast.success(
+				bulkDeleteIds.length === 1 ? 'Item deleted.' : `${bulkDeleteIds.length} items deleted.`
+			);
+			setBulkDeleteIds(null);
+		} catch {
+			toast.error('Could not delete some items.');
+		} finally {
+			setBulkDeleting(false);
+		}
 	};
 
 	const closeExport = () => {
@@ -396,6 +435,9 @@ export default function CostListDetailPage() {
 					onCommit={commitCell}
 					onAdd={addItem}
 					onRequestDelete={setDeleteTarget}
+					onRequestInfo={setInfoTarget}
+					onBulkDelete={setBulkDeleteIds}
+					selectable
 					adding={createItem.isPending}
 					saving={updateItem.isPending}
 					autoEdit={autoEdit}
@@ -403,14 +445,6 @@ export default function CostListDetailPage() {
 					emptyMessage="No items yet. Add a row to get started."
 				/>
 			)}
-
-			<Pagination
-				page={page}
-				totalPages={data?.total_pages || 1}
-				count={data?.count || 0}
-				pageSize={queryParams.page_size}
-				onPageChange={setPage}
-			/>
 
 			<Modal
 				open={Boolean(deleteTarget)}
@@ -437,6 +471,39 @@ export default function CostListDetailPage() {
 					This cannot be undone.
 				</p>
 			</Modal>
+
+			<Modal
+				open={Boolean(bulkDeleteIds?.length)}
+				onClose={() => !bulkDeleting && setBulkDeleteIds(null)}
+				title="Delete selected items"
+				size="sm"
+				footer={
+					<>
+						<Button
+							variant="secondary"
+							onClick={() => setBulkDeleteIds(null)}
+							disabled={bulkDeleting}
+						>
+							Cancel
+						</Button>
+						<Button variant="danger" loading={bulkDeleting} onClick={confirmBulkDelete}>
+							Delete {bulkDeleteIds?.length || 0}
+						</Button>
+					</>
+				}
+			>
+				<p className="text-muted text-sm">
+					Delete <span className="text-fg font-medium">{bulkDeleteIds?.length || 0}</span> selected
+					items? This cannot be undone.
+				</p>
+			</Modal>
+
+			<RecordInfoModal
+				open={Boolean(infoTarget)}
+				onClose={() => setInfoTarget(null)}
+				title={infoTarget?.title || 'Item details'}
+				fields={itemInfoFields(infoTarget)}
+			/>
 
 			<GroceryExportModal
 				open={exportOpen}
