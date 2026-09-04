@@ -1,8 +1,6 @@
 import { useNavigate } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
 import { Bell, Menu, Search } from 'lucide-react';
 
-import { get } from '../../lib/api';
 import { useAuthStore } from '../../stores/authStore';
 import { useUIStore } from '../../stores/uiStore';
 import { Avatar, Button } from '../ui';
@@ -13,12 +11,8 @@ export function Topbar() {
 	const user = useAuthStore((s) => s.user);
 	const { toggleSidebar, openPalette } = useUIStore();
 
-	const { data } = useQuery({
-		queryKey: ['notifications', 'unread-count'],
-		queryFn: () => get('/notifications/unread-count/'),
-		refetchInterval: 30_000
-	});
-	const unread = data?.count || 0;
+	// Notifications API is not implemented yet — keep the bell as a no-op UI affordance.
+	const unread = 0;
 
 	return (
 		<header className="border-line bg-surface/80 sticky top-0 z-30 flex h-16 items-center gap-2 border-b px-4 backdrop-blur">
@@ -38,7 +32,9 @@ export function Topbar() {
 			>
 				<Search size={16} />
 				<span>Search…</span>
-				<kbd className="border-line ml-auto hidden rounded-sm border px-1.5 text-xs sm:inline">⌘K</kbd>
+				<kbd className="border-line ml-auto hidden rounded-sm border px-1.5 text-xs sm:inline">
+					⌘K
+				</kbd>
 			</button>
 
 			<div className="flex flex-1 items-center justify-end gap-1">
@@ -46,9 +42,10 @@ export function Topbar() {
 				<Button
 					variant="ghost"
 					size="icon"
-					onClick={() => navigate('/notifications')}
-					aria-label={`Notifications${unread ? `, ${unread} unread` : ''}`}
+					onClick={() => navigate('/settings')}
+					aria-label="Notifications (coming soon)"
 					className="relative"
+					title="Notifications coming soon"
 				>
 					<Bell size={18} />
 					{unread > 0 && (

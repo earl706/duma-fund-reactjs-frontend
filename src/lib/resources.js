@@ -1,21 +1,42 @@
 import { useQuery } from '@tanstack/react-query';
 
 import { createNestedResourceHooks, createResourceHooks } from '../hooks/useResource';
-import { get } from './api';
+import { get, patch } from './api';
 
-export const costListsApi = createResourceHooks('cost-lists', '/cost-lists/');
+export const categoriesApi = createResourceHooks('finance-categories', '/finance/categories/');
 
-export const costItemsApi = createNestedResourceHooks(
-	'cost-items',
-	(listId) => `/cost-lists/${listId}/items/`,
-	{ parentKey: 'cost-lists' }
+export const transactionsApi = createResourceHooks(
+	'finance-transactions',
+	'/finance/transactions/'
 );
 
-/** Dashboard spend / list activity time series. */
-export function useCostAnalytics(params = {}, options = {}) {
+export const transactionItemsApi = createNestedResourceHooks(
+	'finance-transaction-items',
+	(txnId) => `/finance/transactions/${txnId}/items/`,
+	{ parentKey: 'finance-transactions' }
+);
+
+export function useFinanceBalance(options = {}) {
 	return useQuery({
-		queryKey: ['cost-analytics', params],
-		queryFn: () => get('/costs/analytics/', { params }),
+		queryKey: ['finance-balance'],
+		queryFn: () => get('/finance/balance/'),
 		...options
 	});
+}
+
+export function useFinanceAnalytics(params = {}, options = {}) {
+	return useQuery({
+		queryKey: ['finance-analytics', params],
+		queryFn: () => get('/finance/analytics/', { params }),
+		...options
+	});
+}
+
+export async function updateStartingBalance(starting_balance) {
+	return patch('/finance/balance/', { starting_balance });
+}
+
+/** @deprecated Use useFinanceAnalytics */
+export function useCostAnalytics(params = {}, options = {}) {
+	return useFinanceAnalytics(params, options);
 }

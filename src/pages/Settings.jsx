@@ -1,8 +1,10 @@
 import { useState } from 'react';
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { LogOut, Settings as SettingsIcon, Shield } from 'lucide-react';
 
 import { patch } from '../lib/api';
+import { updateStartingBalance, useFinanceBalance } from '../lib/resources';
+import { formatCost } from '../lib/format';
 import { toast } from '../stores/toastStore';
 import { useAuthStore } from '../stores/authStore';
 import { useThemeStore } from '../stores/themeStore';
@@ -11,12 +13,18 @@ import { PageHeader } from '../components/layout/PageHeader';
 import { Avatar, Button, Card, CardBody, CardHeader, Input } from '../components/ui';
 
 export default function SettingsPage() {
+	const queryClient = useQueryClient();
 	const user = useAuthStore((s) => s.user);
 	const logout = useAuthStore((s) => s.logout);
 	const updateUser = useAuthStore((s) => s.updateUser);
 	const { theme, setTheme } = useThemeStore();
 	const [mfaSetupOpen, setMfaSetupOpen] = useState(false);
 	const [newEmail, setNewEmail] = useState('');
+	const { data: balance } = useFinanceBalance();
+	const [startingDraft, setStartingDraft] = useState(null);
+
+	const startingValue =
+		startingDraft != null ? startingDraft : (balance?.starting_balance ?? '0.00');
 
 	const saveName = useMutation({
 		mutationFn: (body) => patch('/auth/me/', body),
@@ -25,6 +33,16 @@ export default function SettingsPage() {
 			toast.success('Profile updated.');
 		},
 		onError: () => toast.error('Could not update profile.')
+	});
+
+	const saveStarting = useMutation({
+		mutationFn: (value) => updateStartingBalance(value),
+		onSuccess: () => {
+			toast.success('Starting balance updated.');
+			setStartingDraft(null);
+			queryClient.invalidateQueries({ queryKey: ['finance-balance'] });
+		},
+		onError: () => toast.error('Could not update starting balance.')
 	});
 
 	const changeEmail = useMutation({
@@ -110,21 +128,54 @@ export default function SettingsPage() {
 					</CardBody>
 				</Card>
 
-				<Card>
-					<CardHeader
-						title="Two-factor authentication"
-						subtitle="Protect your account with an authenticator app"
-					/>
-					<CardBody className="space-y-4">
-						{user?.mfa_enabled ? (
-							<MfaDisableSection />
-						) : (
-							<Button onClick={() => setMfaSetupOpen(true)}>
-								<Shield size={16} /> Enable MFA
-							</Button>
-						)}
-					</CardBody>
-				</Card>
+				<div className="space-y-4">
+					<Card>
+						<CardHeader
+							title="Wallet"
+							subtitle={
+								balance
+									? `Current balance ${formatCost(balance.balance)}`
+									: 'Starting balance for derived ledger total'
+							}
+						/>
+						<CardBody className="space-y-3">
+							<Input
+								label="Starting balance"
+								type="number"
+								step="0.01"
+								value={startingValue}
+								onChange={(e) => setStartingDraft(e.target.value)}
+								onBlur={() => {
+									if (startingDraft == null) return;
+									if (String(startingDraft) === String(balance?.starting_balance)) {
+										setStartingDraft(null);
+										return;
+									}
+									saveStarting.mutate(startingDraft);
+								}}
+							/>
+							<p className="text-muted text-xs">
+								Balance = starting + income − expense + transfers.
+							</p>
+						</CardBody>
+					</Card>
+
+					<Card>
+						<CardHeader
+							title="Two-factor authentication"
+							subtitle="Protect your account with an authenticator app"
+						/>
+						<CardBody className="space-y-4">
+							{user?.mfa_enabled ? (
+								<MfaDisableSection />
+							) : (
+								<Button onClick={() => setMfaSetupOpen(true)}>
+									<Shield size={16} /> Enable MFA
+								</Button>
+							)}
+						</CardBody>
+					</Card>
+				</div>
 			</div>
 			<MfaSetupModal open={mfaSetupOpen} onClose={() => setMfaSetupOpen(false)} />
 		</div>

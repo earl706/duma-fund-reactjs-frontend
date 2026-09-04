@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { LayoutDashboard } from 'lucide-react';
+import { LayoutDashboard, ScanLine } from 'lucide-react';
 import {
 	Area,
 	AreaChart,
@@ -11,12 +11,22 @@ import {
 	YAxis
 } from 'recharts';
 import { format, parseISO } from 'date-fns';
+import { useQueryClient } from '@tanstack/react-query';
 
 import { useAuthStore } from '../stores/authStore';
-import { useCostAnalytics } from '../lib/resources';
+import { categoriesApi, useFinanceAnalytics, useFinanceBalance } from '../lib/resources';
 import { formatCost } from '../lib/format';
+import { ReceiptImportModal } from '../components/finance/ReceiptImportModal';
 import { PageHeader } from '../components/layout/PageHeader';
-import { Button, Card, CardBody, CardHeader, EmptyState, LoadingScreen } from '../components/ui';
+import {
+	Button,
+	Card,
+	CardBody,
+	CardHeader,
+	EmptyState,
+	LoadingScreen,
+	StatCard
+} from '../components/ui';
 
 const GRAINS = [
 	{ value: 'day', label: 'Daily' },
@@ -40,12 +50,18 @@ function greeting() {
 }
 
 export default function DashboardPage() {
+	const queryClient = useQueryClient();
 	const user = useAuthStore((s) => s.user);
 	const name = user?.full_name?.split(' ')[0] || 'there';
 	const [grain, setGrain] = useState('day');
 	const [includeArchived, setIncludeArchived] = useState(false);
+	const [scanOpen, setScanOpen] = useState(false);
 
-	const { data, isLoading, isError } = useCostAnalytics({
+	const { data: balance } = useFinanceBalance();
+	const { data: categoriesData } = categoriesApi.useList({ page_size: 100, kind: 'expense' });
+	const expenseCategories = categoriesData?.results || [];
+
+	const { data, isLoading, isError } = useFinanceAnalytics({
 		grain,
 		include_archived: includeArchived ? '1' : '0'
 	});
@@ -56,8 +72,8 @@ export default function DashboardPage() {
 			period: p.period,
 			label: formatPeriodLabel(p.period, grain),
 			item_spend: Number(p.item_spend || 0),
-			list_spend: Number(p.list_spend || 0),
-			list_count: Number(p.list_count || 0)
+			list_spend: Number(p.list_spend || p.txn_spend || 0),
+			list_count: Number(p.list_count || p.txn_count || 0)
 		}));
 	}, [data, grain]);
 
@@ -72,12 +88,25 @@ export default function DashboardPage() {
 				title={`${greeting()}, ${name}`}
 				icon={LayoutDashboard}
 				description={`Spend over ${rangeLabel} by effective date.`}
+				actions={
+					<Button variant="secondary" onClick={() => setScanOpen(true)}>
+						<ScanLine size={16} /> Scan receipt
+					</Button>
+				}
 			/>
+
+			{balance && (
+				<div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+					<StatCard label="Balance" value={formatCost(balance.balance)} />
+					<StatCard label="Starting" value={formatCost(balance.starting_balance)} />
+					<StatCard label="Expenses (all time)" value={formatCost(balance.totals?.expense)} />
+				</div>
+			)}
 
 			<Card>
 				<CardHeader
 					title="Expense activity"
-					subtitle="Item line totals and list totals by date effective"
+					subtitle="Item line totals and transaction totals by date effective"
 					action={
 						<div className="flex flex-wrap items-center justify-end gap-2">
 							<div className="border-line bg-surface-2 inline-flex rounded-md border p-0.5">
@@ -151,21 +180,13 @@ export default function DashboardPage() {
 											color: 'var(--fg)'
 										}}
 										formatter={(value, name) => {
-											if (name === 'list_count') return [value, 'Lists'];
-											const label = name === 'item_spend' ? 'Items' : 'Lists (total)';
+											if (name === 'list_count') return [value, 'Transactions'];
+											const label = name === 'item_spend' ? 'Items' : 'Transactions (total)';
 											return [formatCost(value), label];
 										}}
 										labelFormatter={(label) => label}
 									/>
-									<Legend
-										formatter={(value) =>
-											value === 'item_spend'
-												? 'Item spend'
-												: value === 'list_spend'
-													? 'List spend'
-													: value
-										}
-									/>
+
 									<Area
 										type="monotone"
 										dataKey="item_spend"
@@ -192,6 +213,17 @@ export default function DashboardPage() {
 					)}
 				</CardBody>
 			</Card>
+
+			<ReceiptImportModal
+				open={scanOpen}
+				onClose={() => setScanOpen(false)}
+				categories={expenseCategories}
+				onCommitted={() => {
+					queryClient.invalidateQueries({ queryKey: ['finance-transactions'] });
+					queryClient.invalidateQueries({ queryKey: ['finance-balance'] });
+					queryClient.invalidateQueries({ queryKey: ['finance-analytics'] });
+				}}
+			/>
 		</div>
 	);
 }

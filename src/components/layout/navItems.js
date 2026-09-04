@@ -1,4 +1,4 @@
-import { LayoutDashboard, List } from 'lucide-react';
+import { ArrowLeftRight, FolderTree, LayoutDashboard } from 'lucide-react';
 
 /** Primary navigation, grouped for the sidebar. `end` marks exact-match links. */
 export const navGroups = [
@@ -6,7 +6,8 @@ export const navGroups = [
 		label: 'Workspace',
 		items: [
 			{ to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true },
-			{ to: '/lists', label: 'Lists', icon: List }
+			{ to: '/transactions', label: 'Transactions', icon: ArrowLeftRight },
+			{ to: '/categories', label: 'Categories', icon: FolderTree }
 		]
 	}
 ];

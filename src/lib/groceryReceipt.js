@@ -3,13 +3,13 @@ import { formatCost, formatDate } from './format';
 
 const PAGE_SIZE = 100;
 
-/** Fetch every item on a cost list (ignores UI filters/pagination). */
-export async function fetchAllCostItems(listId) {
+/** Fetch every item on a transaction (ignores UI filters/pagination). */
+export async function fetchAllCostItems(transactionId) {
 	const items = [];
 	let page = 1;
 	let totalPages = 1;
 	while (page <= totalPages) {
-		const data = await get(`/cost-lists/${listId}/items/`, {
+		const data = await get(`/finance/transactions/${transactionId}/items/`, {
 			params: { page, page_size: PAGE_SIZE, ordering: 'title' }
 		});
 		items.push(...(data.results || []));

@@ -1,4 +1,5 @@
-import { lazy } from 'react';
+import { createElement, lazy } from 'react';
+import { Navigate, useParams } from 'react-router-dom';
 
 export const publicRoutes = [
 	{
@@ -27,9 +28,21 @@ export const publicRoutes = [
 	}
 ];
 
+function ListsRedirect() {
+	return createElement(Navigate, { to: '/transactions', replace: true });
+}
+
+function ListDetailRedirect() {
+	const { id } = useParams();
+	return createElement(Navigate, { to: `/transactions/${id}`, replace: true });
+}
+
 export const appRoutes = [
 	{ path: '/', Component: lazy(() => import('./Dashboard')) },
-	{ path: 'lists', Component: lazy(() => import('./CostLists')) },
-	{ path: 'lists/:id', Component: lazy(() => import('./CostListDetail')) },
-	{ path: 'settings', Component: lazy(() => import('./Settings')) }
+	{ path: 'transactions', Component: lazy(() => import('./Transactions')) },
+	{ path: 'transactions/:id', Component: lazy(() => import('./TransactionDetail')) },
+	{ path: 'categories', Component: lazy(() => import('./Categories')) },
+	{ path: 'settings', Component: lazy(() => import('./Settings')) },
+	{ path: 'lists', Component: ListsRedirect },
+	{ path: 'lists/:id', Component: ListDetailRedirect }
 ];

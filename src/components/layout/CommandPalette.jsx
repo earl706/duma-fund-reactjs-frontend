@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Search } from 'lucide-react';
 
-import { costListsApi } from '../../lib/resources';
+import { transactionsApi } from '../../lib/resources';
 import { useUIStore } from '../../stores/uiStore';
 
 /**
@@ -20,7 +20,7 @@ function PaletteDialog({ onClose }) {
 		return () => clearTimeout(id);
 	}, [term]);
 
-	const { data, isFetching } = costListsApi.useList(
+	const { data, isFetching } = transactionsApi.useList(
 		{ search: debounced, page_size: 8 },
 		{ enabled: debounced.length > 1 }
 	);
@@ -28,7 +28,7 @@ function PaletteDialog({ onClose }) {
 
 	const goTo = (item) => {
 		onClose();
-		navigate(`/lists/${item.id}`);
+		navigate(`/transactions/${item.id}`);
 	};
 
 	return (
@@ -46,7 +46,7 @@ function PaletteDialog({ onClose }) {
 					autoFocus
 					value={term}
 					onChange={(e) => setTerm(e.target.value)}
-					placeholder="Search lists…"
+					placeholder="Search transactions…"
 					className="text-fg placeholder:text-muted h-14 flex-1 bg-transparent outline-none"
 				/>
 				{isFetching && <span className="text-muted text-xs">…</span>}
@@ -54,7 +54,7 @@ function PaletteDialog({ onClose }) {
 
 			<div className="max-h-80 overflow-y-auto p-2">
 				{debounced.length <= 1 && (
-					<p className="text-muted p-6 text-center text-sm">Type to search lists.</p>
+					<p className="text-muted p-6 text-center text-sm">Type to search transactions.</p>
 				)}
 				{debounced.length > 1 && !isFetching && results.length === 0 && (
 					<p className="text-muted p-6 text-center text-sm">No results for “{debounced}”.</p>
@@ -66,8 +66,8 @@ function PaletteDialog({ onClose }) {
 						className="hover:bg-surface-2 flex w-full cursor-pointer items-center gap-3 rounded-md px-3 py-2 text-left text-sm"
 					>
 						<Search size={16} className="text-muted" />
-						<span className="text-fg flex-1 truncate">{item.title}</span>
-						{item.status && <span className="text-muted text-xs capitalize">{item.status}</span>}
+						<span className="text-fg flex-1 truncate">{item.title || item.type}</span>
+						{item.type && <span className="text-muted text-xs capitalize">{item.type}</span>}
 					</button>
 				))}
 			</div>

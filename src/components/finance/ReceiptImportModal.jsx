@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { ScanLine, Trash2 } from 'lucide-react';
 
 import {
-	bulkImportItems,
-	mediaUrl,
+	commitReceipt,
 	normalizeDraftItems,
 	scanReceipt,
 	UNIT_OPTIONS
@@ -24,30 +24,50 @@ function updateRow(rows, key, field, value) {
 }
 
 /**
- * Upload receipt → review extracted rows → bulk import CostItems.
+ * Standalone receipt scan → review (merchant, header + line categories) → commit expense txn.
  */
 export function ReceiptImportModal({
 	open,
 	onClose,
-	listId,
-	onImported,
-	initialReceiptUrl = null
+	categories = [],
+	defaultCategoryId = null,
+	onCommitted
 }) {
+	const navigate = useNavigate();
 	const fileRef = useRef(null);
 	const [scanning, setScanning] = useState(false);
 	const [importing, setImporting] = useState(false);
+	const [file, setFile] = useState(null);
+	const [previewUrl, setPreviewUrl] = useState(null);
 	const [rows, setRows] = useState([]);
 	const [dateEffective, setDateEffective] = useState('');
-	const [receiptUrl, setReceiptUrl] = useState(initialReceiptUrl);
+	const [merchant, setMerchant] = useState('');
+	const [headerCategoryId, setHeaderCategoryId] = useState('');
+
+	const fallbackCategoryId =
+		defaultCategoryId ||
+		categories.find((c) => c.name === 'Other' && !c.parent)?.id ||
+		categories[0]?.id;
+
+	const effectiveHeaderCategoryId =
+		headerCategoryId || (fallbackCategoryId ? String(fallbackCategoryId) : '');
 
 	useEffect(() => {
-		if (open) setReceiptUrl(initialReceiptUrl);
-	}, [open, initialReceiptUrl]);
+		return () => {
+			if (previewUrl) URL.revokeObjectURL(previewUrl);
+		};
+	}, [previewUrl]);
 
 	const reset = () => {
 		setRows([]);
 		setDateEffective('');
-		setReceiptUrl(initialReceiptUrl);
+		setMerchant('');
+		setFile(null);
+		setHeaderCategoryId('');
+		setPreviewUrl((prev) => {
+			if (prev) URL.revokeObjectURL(prev);
+			return null;
+		});
 	};
 
 	const handleClose = () => {
@@ -59,17 +79,24 @@ export function ReceiptImportModal({
 	const handlePickFile = () => fileRef.current?.click();
 
 	const handleFile = async (event) => {
-		const file = event.target.files?.[0];
+		const picked = event.target.files?.[0];
 		event.target.value = '';
-		if (!file || !listId) return;
+		if (!picked) return;
 
 		setScanning(true);
 		try {
-			const data = await scanReceipt(listId, file);
+			const data = await scanReceipt(picked);
 			const effective = data.date_effective || todayISO();
+			const headerCat = data.category_id || fallbackCategoryId;
+			setFile(picked);
+			setPreviewUrl((prev) => {
+				if (prev) URL.revokeObjectURL(prev);
+				return URL.createObjectURL(picked);
+			});
 			setDateEffective(effective);
-			setReceiptUrl(data.receipt_image || null);
-			setRows(normalizeDraftItems(data.items, effective));
+			setMerchant(data.merchant || '');
+			setHeaderCategoryId(headerCat ? String(headerCat) : '');
+			setRows(normalizeDraftItems(data.items, effective, headerCat));
 			if (!data.items?.length) toast.error('No items found on the receipt.');
 		} catch (err) {
 			const detail = err?.response?.data?.detail;
@@ -81,41 +108,57 @@ export function ReceiptImportModal({
 
 	const removeRow = (key) => setRows((prev) => prev.filter((row) => row._key !== key));
 
-	const handleImport = async () => {
-		if (!listId || !rows.length) return;
-
-		const payload = {
-			date_effective: dateEffective || undefined,
-			items: rows.map(({ title, cost, quantity, unit, date_effective }) => ({
-				title: title.trim(),
-				cost,
-				quantity,
-				unit,
-				date_effective: date_effective || dateEffective || undefined
-			}))
-		};
-
-		if (payload.items.some((item) => !item.title)) {
-			toast.error('Every row needs a title.');
+	const handleCommit = async () => {
+		if (!rows.length || !effectiveHeaderCategoryId) {
+			toast.error('Category and at least one item are required.');
+			return;
+		}
+		if (rows.some((r) => !r.title.trim() || !r.category_id)) {
+			toast.error('Every row needs a title and category.');
 			return;
 		}
 
 		setImporting(true);
 		try {
-			const created = await bulkImportItems(listId, payload);
-			toast.success(`Added ${created.length} item${created.length === 1 ? '' : 's'}.`);
-			onImported?.(created);
+			const created = await commitReceipt({
+				file,
+				title: merchant.trim() || 'Receipt',
+				note: merchant.trim() || '',
+				category_id: Number(effectiveHeaderCategoryId),
+				date_effective: dateEffective || undefined,
+				items: rows.map(({ title, cost, quantity, unit, category_id, date_effective }) => {
+					const row = {
+						title: title.trim(),
+						cost,
+						quantity,
+						unit,
+						category_id: Number(category_id)
+					};
+					const d = date_effective || dateEffective;
+					if (d) row.date_effective = d;
+					return row;
+				})
+			});
+			toast.success('Receipt logged as expense.');
+			onCommitted?.(created);
 			reset();
 			onClose();
+			if (created?.id) navigate(`/transactions/${created.id}`);
 		} catch (err) {
-			const detail = err?.response?.data?.detail;
-			toast.error(detail || 'Could not import items.');
+			const data = err?.response?.data;
+			const detail =
+				data?.detail ||
+				data?.items?.[0] ||
+				data?.category_id?.[0] ||
+				(data && typeof data === 'object'
+					? Object.values(data).flat?.()?.[0] || Object.values(data)[0]
+					: null);
+			toast.error((typeof detail === 'string' ? detail : null) || 'Could not save receipt.');
 		} finally {
 			setImporting(false);
 		}
 	};
 
-	const previewUrl = mediaUrl(receiptUrl);
 	const reviewing = rows.length > 0;
 
 	return (
@@ -130,8 +173,8 @@ export function ReceiptImportModal({
 						Cancel
 					</Button>
 					{reviewing ? (
-						<Button loading={importing} onClick={handleImport} disabled={scanning}>
-							Add {rows.length} to list
+						<Button loading={importing} onClick={handleCommit} disabled={scanning}>
+							Log as expense
 						</Button>
 					) : (
 						<Button loading={scanning} onClick={handlePickFile}>
@@ -163,28 +206,53 @@ export function ReceiptImportModal({
 						</div>
 					)}
 
-					<Input
-						label="Effective date (all rows)"
-						type="date"
-						value={dateEffective}
-						onChange={(e) => setDateEffective(e.target.value)}
-					/>
+					<div className="grid gap-3 sm:grid-cols-2">
+						<Input
+							label="Merchant / title"
+							value={merchant}
+							onChange={(e) => setMerchant(e.target.value)}
+						/>
+						<Input
+							label="Effective date"
+							type="date"
+							value={dateEffective}
+							onChange={(e) => setDateEffective(e.target.value)}
+						/>
+					</div>
+
+					<label className="block text-sm">
+						<span className="text-fg mb-1.5 block font-medium">Receipt category</span>
+						<select
+							className="border-line bg-surface text-fg w-full rounded-md border px-3 py-2 text-sm"
+							value={effectiveHeaderCategoryId}
+							onChange={(e) => setHeaderCategoryId(e.target.value)}
+						>
+							{categories.map((c) => (
+								<option key={c.id} value={c.id}>
+									{c.name}
+								</option>
+							))}
+						</select>
+					</label>
 
 					<div className="border-line overflow-x-auto rounded-md border">
-						<table className="w-full min-w-[640px] table-fixed border-collapse text-sm">
+						<table className="w-full min-w-[760px] table-fixed border-collapse text-sm">
 							<thead>
 								<tr className="bg-surface-2 border-line border-b">
-									<th className="text-muted w-[46%] px-2 py-2 text-left text-xs font-semibold uppercase">
+									<th className="text-muted w-[32%] px-2 py-2 text-left text-xs font-semibold uppercase">
 										Title
 									</th>
-									<th className="text-muted w-24 px-2 py-2 text-right text-xs font-semibold uppercase">
+									<th className="text-muted w-20 px-2 py-2 text-right text-xs font-semibold uppercase">
 										Price
 									</th>
-									<th className="text-muted w-24 px-2 py-2 text-right text-xs font-semibold uppercase">
+									<th className="text-muted w-20 px-2 py-2 text-right text-xs font-semibold uppercase">
 										Qty
 									</th>
-									<th className="text-muted w-24 px-2 py-2 text-left text-xs font-semibold uppercase">
+									<th className="text-muted w-16 px-2 py-2 text-left text-xs font-semibold uppercase">
 										Unit
+									</th>
+									<th className="text-muted w-[22%] px-2 py-2 text-left text-xs font-semibold uppercase">
+										Category
 									</th>
 									<th className="w-10" />
 								</tr>
@@ -192,7 +260,7 @@ export function ReceiptImportModal({
 							<tbody>
 								{rows.map((row) => (
 									<tr key={row._key} className="border-line border-b last:border-b-0">
-										<td className="w-[46%] p-1">
+										<td className="p-1">
 											<input
 												className="border-line bg-surface text-fg w-full rounded-sm border px-2 py-1.5 text-sm"
 												value={row.title}
@@ -201,7 +269,7 @@ export function ReceiptImportModal({
 												}
 											/>
 										</td>
-										<td className="w-24 p-1">
+										<td className="p-1">
 											<input
 												type="number"
 												min="0"
@@ -213,7 +281,7 @@ export function ReceiptImportModal({
 												}
 											/>
 										</td>
-										<td className="w-24 p-1">
+										<td className="p-1">
 											<input
 												type="number"
 												min="0"
@@ -225,7 +293,7 @@ export function ReceiptImportModal({
 												}
 											/>
 										</td>
-										<td className="w-24 p-1">
+										<td className="p-1">
 											<select
 												className="border-line bg-surface text-fg w-full rounded-sm border px-2 py-1.5 text-sm"
 												value={row.unit}
@@ -236,6 +304,23 @@ export function ReceiptImportModal({
 												{UNIT_OPTIONS.map((unit) => (
 													<option key={unit} value={unit}>
 														{unit}
+													</option>
+												))}
+											</select>
+										</td>
+										<td className="p-1">
+											<select
+												className="border-line bg-surface text-fg w-full rounded-sm border px-2 py-1.5 text-sm"
+												value={row.category_id}
+												onChange={(e) =>
+													setRows((prev) =>
+														updateRow(prev, row._key, 'category_id', e.target.value)
+													)
+												}
+											>
+												{categories.map((c) => (
+													<option key={c.id} value={c.id}>
+														{c.name}
 													</option>
 												))}
 											</select>
@@ -262,21 +347,10 @@ export function ReceiptImportModal({
 					</Button>
 				</div>
 			) : (
-				<div className="space-y-3">
-					<p className="text-muted text-sm">
-						Upload a photo of a receipt. AI will extract line items for you to review before adding
-						them to this list. The image is saved on the list.
-					</p>
-					{previewUrl && (
-						<div className="bg-surface-2 flex justify-center rounded-md p-3">
-							<img
-								src={previewUrl}
-								alt="Saved receipt"
-								className="max-h-48 w-auto max-w-full rounded-sm object-contain"
-							/>
-						</div>
-					)}
-				</div>
+				<p className="text-muted text-sm">
+					Upload a receipt photo. AI extracts merchant, line items, and category suggestions.
+					Review, then log as an expense transaction.
+				</p>
 			)}
 		</Modal>
 	);
