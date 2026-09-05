@@ -45,15 +45,14 @@ export function draftRowKey(row, index) {
 	return row._key || `row-${index}`;
 }
 
-export function normalizeDraftItems(items, dateEffective, fallbackCategoryId) {
+export function normalizeDraftItems(items, fallbackCategoryId) {
 	return (items || []).map((item, index) => ({
 		_key: `draft-${index}-${Date.now()}`,
 		title: item.title || '',
 		cost: item.cost ?? '0.00',
 		quantity: item.quantity ?? '1.00',
 		unit: UNIT_OPTIONS.includes(item.unit) ? item.unit : 'pcs',
-		category_id: item.category_id ?? fallbackCategoryId ?? '',
-		date_effective: item.date_effective || dateEffective || ''
+		category_id: item.category_id ?? fallbackCategoryId ?? ''
 	}));
 }
 

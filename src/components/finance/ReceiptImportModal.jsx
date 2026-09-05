@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ScanLine, Trash2 } from 'lucide-react';
 
+import { getCroppedImageFile } from '../../lib/cropImage';
 import {
 	commitReceipt,
 	normalizeDraftItems,
@@ -10,6 +11,7 @@ import {
 } from '../../lib/receiptScan';
 import { toast } from '../../stores/toastStore';
 import { Button, Input, LoadingScreen, Modal } from '../ui';
+import { ReceiptCropper } from './ReceiptCropper';
 
 function todayISO() {
 	const d = new Date();
@@ -23,8 +25,19 @@ function updateRow(rows, key, field, value) {
 	return rows.map((row) => (row._key === key ? { ...row, [field]: value } : row));
 }
 
+function useObjectUrl(blob) {
+	const url = useMemo(() => (blob ? URL.createObjectURL(blob) : null), [blob]);
+	useEffect(
+		() => () => {
+			if (url) URL.revokeObjectURL(url);
+		},
+		[url]
+	);
+	return url;
+}
+
 /**
- * Standalone receipt scan → review (merchant, header + line categories) → commit expense txn.
+ * Standalone receipt: pick image → crop → OCR review → commit expense txn.
  */
 export function ReceiptImportModal({
 	open,
@@ -37,12 +50,15 @@ export function ReceiptImportModal({
 	const fileRef = useRef(null);
 	const [scanning, setScanning] = useState(false);
 	const [importing, setImporting] = useState(false);
+	const [originalFile, setOriginalFile] = useState(null);
+	const [croppedAreaPixels, setCroppedAreaPixels] = useState(null);
 	const [file, setFile] = useState(null);
-	const [previewUrl, setPreviewUrl] = useState(null);
 	const [rows, setRows] = useState([]);
 	const [dateEffective, setDateEffective] = useState('');
 	const [merchant, setMerchant] = useState('');
 	const [headerCategoryId, setHeaderCategoryId] = useState('');
+	const sourceUrl = useObjectUrl(originalFile);
+	const previewUrl = useObjectUrl(file);
 
 	const fallbackCategoryId =
 		defaultCategoryId ||
@@ -52,22 +68,14 @@ export function ReceiptImportModal({
 	const effectiveHeaderCategoryId =
 		headerCategoryId || (fallbackCategoryId ? String(fallbackCategoryId) : '');
 
-	useEffect(() => {
-		return () => {
-			if (previewUrl) URL.revokeObjectURL(previewUrl);
-		};
-	}, [previewUrl]);
-
 	const reset = () => {
 		setRows([]);
 		setDateEffective('');
 		setMerchant('');
 		setFile(null);
+		setOriginalFile(null);
+		setCroppedAreaPixels(null);
 		setHeaderCategoryId('');
-		setPreviewUrl((prev) => {
-			if (prev) URL.revokeObjectURL(prev);
-			return null;
-		});
 	};
 
 	const handleClose = () => {
@@ -78,29 +86,46 @@ export function ReceiptImportModal({
 
 	const handlePickFile = () => fileRef.current?.click();
 
-	const handleFile = async (event) => {
+	const handleFile = (event) => {
 		const picked = event.target.files?.[0];
 		event.target.value = '';
 		if (!picked) return;
 
+		setRows([]);
+		setDateEffective('');
+		setMerchant('');
+		setFile(null);
+		setHeaderCategoryId('');
+		setCroppedAreaPixels(null);
+		setOriginalFile(picked);
+	};
+
+	const handleScanCrop = async () => {
+		if (!sourceUrl || !originalFile || !croppedAreaPixels) {
+			toast.error('Crop the receipt first.');
+			return;
+		}
+
 		setScanning(true);
 		try {
-			const data = await scanReceipt(picked);
+			const cropped = await getCroppedImageFile(sourceUrl, croppedAreaPixels, originalFile);
+			const data = await scanReceipt(cropped);
+			if (!data.items?.length) {
+				toast.error('No items found on the receipt.');
+				return;
+			}
 			const effective = data.date_effective || todayISO();
 			const headerCat = data.category_id || fallbackCategoryId;
-			setFile(picked);
-			setPreviewUrl((prev) => {
-				if (prev) URL.revokeObjectURL(prev);
-				return URL.createObjectURL(picked);
-			});
+			setFile(cropped);
+			setOriginalFile(null);
+			setCroppedAreaPixels(null);
 			setDateEffective(effective);
 			setMerchant(data.merchant || '');
 			setHeaderCategoryId(headerCat ? String(headerCat) : '');
-			setRows(normalizeDraftItems(data.items, effective, headerCat));
-			if (!data.items?.length) toast.error('No items found on the receipt.');
+			setRows(normalizeDraftItems(data.items, headerCat));
 		} catch (err) {
 			const detail = err?.response?.data?.detail;
-			toast.error(detail || 'Could not scan receipt.');
+			toast.error(detail || err?.message || 'Could not scan receipt.');
 		} finally {
 			setScanning(false);
 		}
@@ -126,18 +151,13 @@ export function ReceiptImportModal({
 				note: merchant.trim() || '',
 				category_id: Number(effectiveHeaderCategoryId),
 				date_effective: dateEffective || undefined,
-				items: rows.map(({ title, cost, quantity, unit, category_id, date_effective }) => {
-					const row = {
-						title: title.trim(),
-						cost,
-						quantity,
-						unit,
-						category_id: Number(category_id)
-					};
-					const d = date_effective || dateEffective;
-					if (d) row.date_effective = d;
-					return row;
-				})
+				items: rows.map(({ title, cost, quantity, unit, category_id }) => ({
+					title: title.trim(),
+					cost,
+					quantity,
+					unit,
+					category_id: Number(category_id)
+				}))
 			});
 			toast.success('Receipt logged as expense.');
 			onCommitted?.(created);
@@ -160,12 +180,13 @@ export function ReceiptImportModal({
 	};
 
 	const reviewing = rows.length > 0;
+	const cropping = Boolean(originalFile) && !scanning && !reviewing;
 
 	return (
 		<Modal
 			open={open}
 			onClose={handleClose}
-			title="Scan receipt"
+			title={cropping ? 'Crop receipt' : 'Scan receipt'}
 			size="xl"
 			footer={
 				<>
@@ -175,6 +196,10 @@ export function ReceiptImportModal({
 					{reviewing ? (
 						<Button loading={importing} onClick={handleCommit} disabled={scanning}>
 							Log as expense
+						</Button>
+					) : originalFile ? (
+						<Button loading={scanning} onClick={handleScanCrop} disabled={!croppedAreaPixels}>
+							<ScanLine size={16} /> Scan cropped image
 						</Button>
 					) : (
 						<Button loading={scanning} onClick={handlePickFile}>
@@ -194,6 +219,25 @@ export function ReceiptImportModal({
 
 			{scanning ? (
 				<LoadingScreen />
+			) : cropping ? (
+				<div className="space-y-3">
+					{sourceUrl ? (
+						<ReceiptCropper
+							key={sourceUrl}
+							imageSrc={sourceUrl}
+							onCropPixelsChange={setCroppedAreaPixels}
+						/>
+					) : (
+						<LoadingScreen />
+					)}
+					<p className="text-muted text-sm">
+						Drag the handles to crop. Drag the photo to frame the receipt. The cropped image is sent
+						to AI and saved with the expense.
+					</p>
+					<Button variant="secondary" size="sm" onClick={handlePickFile}>
+						Choose a different image
+					</Button>
+				</div>
 			) : reviewing ? (
 				<div className="space-y-4">
 					{previewUrl && (
@@ -348,8 +392,8 @@ export function ReceiptImportModal({
 				</div>
 			) : (
 				<p className="text-muted text-sm">
-					Upload a receipt photo. AI extracts merchant, line items, and category suggestions.
-					Review, then log as an expense transaction.
+					Upload a receipt photo, crop to the receipt, then scan. AI extracts merchant, line items,
+					and category suggestions. Review, then log as an expense transaction.
 				</p>
 			)}
 		</Modal>

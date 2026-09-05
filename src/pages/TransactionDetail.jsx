@@ -7,7 +7,7 @@ import { categoriesApi, transactionItemsApi, transactionsApi } from '../lib/reso
 import { fetchAllPages } from '../lib/fetchAll';
 import { mediaUrl } from '../lib/receiptScan';
 import { STATUS_TONE } from '../lib/status';
-import { formatCost, formatDate, formatDateShort } from '../lib/format';
+import { formatCost, formatDate } from '../lib/format';
 import {
 	canShareImageFile,
 	canvasToBlob,
@@ -37,8 +37,6 @@ const SORT_OPTIONS = [
 	{ value: 'title', label: 'Title A–Z' },
 	{ value: '-title', label: 'Title Z–A' },
 	{ value: '-cost', label: 'Highest price' },
-	{ value: '-date_effective', label: 'Effective (newest)' },
-	{ value: 'date_effective', label: 'Effective (oldest)' },
 	{ value: 'status', label: 'Status' }
 ];
 
@@ -185,8 +183,7 @@ export default function TransactionDetailPage() {
 			quantity: '1.00',
 			unit: 'pcs',
 			category: defaultCategoryId,
-			date_created: todayISO(),
-			date_effective: todayISO()
+			date_created: todayISO()
 		});
 	};
 
@@ -198,7 +195,7 @@ export default function TransactionDetailPage() {
 
 	const columns = useMemo(
 		() => [
-			{ key: 'title', label: 'Title', editable: true, required: true, className: 'w-[28%]' },
+			{ key: 'title', label: 'Title', editable: true, required: true, className: 'w-[36%]' },
 			{
 				key: 'cost',
 				label: 'Price',
@@ -246,16 +243,6 @@ export default function TransactionDetailPage() {
 				type: 'status-icon',
 				options: STATUS_SELECT,
 				className: 'w-8'
-			},
-			{
-				key: 'date_effective',
-				label: 'Effective',
-				editable: true,
-				inputType: 'date',
-				required: true,
-				className: 'w-[11%]',
-				getDisplay: (row) => (row.date_effective ? formatDateShort(row.date_effective) : '—'),
-				getDraft: (row) => row.date_effective || ''
 			},
 			{
 				key: 'actions',
