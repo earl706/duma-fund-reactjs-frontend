@@ -6,7 +6,7 @@ import { categoriesApi, transactionsApi, useFinanceBalance } from '../lib/resour
 import { fetchAllPages } from '../lib/fetchAll';
 import { mediaUrl } from '../lib/receiptScan';
 import { STATUS_TONE } from '../lib/status';
-import { formatCost, formatDate, formatDateShort } from '../lib/format';
+import { cn, formatCost, formatDate, formatDateShort } from '../lib/format';
 import { toast } from '../stores/toastStore';
 import { useListControls } from '../hooks/useListControls';
 import { ReceiptImportModal } from '../components/finance/ReceiptImportModal';
@@ -47,6 +47,28 @@ const STATUS_OPTIONS = [
 ];
 
 const TYPE_FILTER = [{ value: '', label: 'All types' }, ...TYPE_OPTIONS];
+
+/** Display-only signed amount: + inflows, − outflows (unicode minus). */
+function formatSignedAmount(amount, type) {
+	const formatted = formatCost(amount);
+	if (formatted === '—') return formatted;
+	const inflow = type === 'income' || type === 'transfer_in';
+	return `${inflow ? '+' : '−'}${formatted}`;
+}
+
+function amountToneClass(type) {
+	if (type === 'income' || type === 'transfer_in') return 'text-success';
+	if (type === 'expense' || type === 'transfer_out') return 'text-danger';
+	return 'text-fg';
+}
+
+function SignedAmount({ amount, type, className }) {
+	return (
+		<span className={cn('font-bold tabular-nums', amountToneClass(type), className)}>
+			{formatSignedAmount(amount, type)}
+		</span>
+	);
+}
 
 const STATUS_SELECT = [
 	{ value: 'active', label: 'Active' },
@@ -213,7 +235,14 @@ export default function TransactionsPage() {
 				options: TYPE_OPTIONS,
 				className: 'w-[12%]'
 			},
-			{ key: 'title', label: 'Title', editable: true, className: 'w-[24%]' },
+			{ key: 'title', label: 'Title', editable: true, className: 'w-[20%]', purchaseHint: true },
+			{
+				key: 'merchant',
+				label: 'Store',
+				editable: true,
+				className: 'w-[12%]',
+				getDisplay: (row) => row.merchant || 'Unknown'
+			},
 			{
 				key: 'amount',
 				label: 'Amount',
@@ -221,8 +250,8 @@ export default function TransactionsPage() {
 				align: 'right',
 				inputType: 'number',
 				className: 'w-[10%]',
-				getDisplay: (row) => formatCost(row.amount),
-				getDraft: (row) => String(row.amount ?? '')
+				getDraft: (row) => String(row.amount ?? ''),
+				render: (row) => <SignedAmount amount={row.amount} type={row.type} />
 			},
 			{
 				key: 'category',
@@ -272,8 +301,12 @@ export default function TransactionsPage() {
 		const cat = txn.category != null ? allCategories.get(txn.category) : null;
 		return [
 			{ label: 'Title', value: txn.title || '—' },
+			{ label: 'Store', value: txn.merchant || 'Unknown' },
 			{ label: 'Type', value: txn.type },
-			{ label: 'Amount', value: formatCost(txn.amount) },
+			{
+				label: 'Amount',
+				value: <SignedAmount amount={txn.amount} type={txn.type} />
+			},
 			{ label: 'Category', value: categoryLabel(cat) },
 			{
 				label: 'Status',
@@ -462,6 +495,7 @@ export default function TransactionsPage() {
 				open={scanOpen}
 				onClose={() => setScanOpen(false)}
 				categories={expenseCategories}
+				incomeCategories={incomeCategories}
 				onCommitted={() => {
 					queryClient.invalidateQueries({ queryKey: ['finance-transactions'] });
 					queryClient.invalidateQueries({ queryKey: ['finance-balance'] });

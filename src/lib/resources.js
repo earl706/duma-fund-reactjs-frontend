@@ -32,6 +32,14 @@ export function useFinanceAnalytics(params = {}, options = {}) {
 	});
 }
 
+export function useFinanceBreakdown(params = {}, options = {}) {
+	return useQuery({
+		queryKey: ['finance-analytics-breakdown', params],
+		queryFn: () => get('/finance/analytics/breakdown/', { params }),
+		...options
+	});
+}
+
 export async function updateStartingBalance(starting_balance) {
 	return patch('/finance/balance/', { starting_balance });
 }

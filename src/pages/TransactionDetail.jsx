@@ -86,7 +86,9 @@ export default function TransactionDetailPage() {
 
 	const { data: txn, isLoading: txnLoading, isError: txnError } = transactionsApi.useDetail(txnId);
 	const { data: categoriesData } = categoriesApi.useList({ page_size: 100, kind: 'expense' });
+	const { data: incomeCatsData } = categoriesApi.useList({ page_size: 100, kind: 'income' });
 	const expenseCategories = useMemo(() => categoriesData?.results || [], [categoriesData?.results]);
+	const incomeCategories = useMemo(() => incomeCatsData?.results || [], [incomeCatsData?.results]);
 	const categoryMap = useMemo(() => {
 		const m = new Map();
 		expenseCategories.forEach((c) => m.set(c.id, c));
@@ -195,7 +197,14 @@ export default function TransactionDetailPage() {
 
 	const columns = useMemo(
 		() => [
-			{ key: 'title', label: 'Title', editable: true, required: true, className: 'w-[36%]' },
+			{
+				key: 'title',
+				label: 'Title',
+				editable: true,
+				required: true,
+				className: 'w-[36%]',
+				purchaseHint: true
+			},
 			{
 				key: 'cost',
 				label: 'Price',
@@ -545,13 +554,15 @@ export default function TransactionDetailPage() {
 				open={scanOpen}
 				onClose={() => setScanOpen(false)}
 				categories={expenseCategories}
+				incomeCategories={incomeCategories}
 				defaultCategoryId={defaultCategoryId}
 				onCommitted={(created) => {
 					queryClient.invalidateQueries({ queryKey: ['finance-transactions'] });
 					queryClient.invalidateQueries({ queryKey: ['finance-transaction-items'] });
 					queryClient.invalidateQueries({ queryKey: ['finance-balance'] });
-					if (created?.id && created.id !== txnId) {
-						navigate(`/transactions/${created.id}`);
+					const nextId = created?.results?.[0]?.id || created?.id;
+					if (nextId && nextId !== txnId) {
+						navigate(`/transactions/${nextId}`);
 					}
 				}}
 			/>

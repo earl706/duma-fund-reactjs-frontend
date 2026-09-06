@@ -41,6 +41,7 @@ export const appRoutes = [
 	{ path: '/', Component: lazy(() => import('./Dashboard')) },
 	{ path: 'transactions', Component: lazy(() => import('./Transactions')) },
 	{ path: 'transactions/:id', Component: lazy(() => import('./TransactionDetail')) },
+	{ path: 'regular-buys', Component: lazy(() => import('./RegularBuys')) },
 	{ path: 'categories', Component: lazy(() => import('./Categories')) },
 	{ path: 'settings', Component: lazy(() => import('./Settings')) },
 	{ path: 'lists', Component: ListsRedirect },

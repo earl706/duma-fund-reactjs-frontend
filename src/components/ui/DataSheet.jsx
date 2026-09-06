@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { ExternalLink, Info, Plus, Trash2 } from 'lucide-react';
 
 import { cn } from '../../lib/format';
+import { PurchaseHint } from '../finance/PurchaseHint';
 import { Button } from './Button';
 
 const STATUS_DOT = {
@@ -592,7 +593,7 @@ export function DataSheet({
 											}
 
 											return (
-												<td key={col.key} className={cn('p-0', col.className)}>
+												<td key={col.key} className={cn('relative p-0', col.className)}>
 													{col.type === 'select' || col.type === 'status-icon' ? (
 														<select
 															ref={inputRef}
@@ -612,20 +613,32 @@ export function DataSheet({
 															))}
 														</select>
 													) : (
-														<input
-															ref={inputRef}
-															type={inputType}
-															min={inputType === 'number' ? (col.min ?? '0') : undefined}
-															step={inputType === 'number' ? (col.step ?? '0.01') : undefined}
-															className={cn(
-																'border-primary bg-surface text-fg h-7 w-full border px-1.5 text-xs focus:outline-none',
-																col.align === 'right' && 'text-right tabular-nums'
+														<>
+															<input
+																ref={inputRef}
+																type={inputType}
+																min={inputType === 'number' ? (col.min ?? '0') : undefined}
+																step={inputType === 'number' ? (col.step ?? '0.01') : undefined}
+																className={cn(
+																	'border-primary bg-surface text-fg h-7 w-full border px-1.5 text-xs focus:outline-none',
+																	col.align === 'right' && 'text-right tabular-nums'
+																)}
+																value={draft}
+																onChange={(e) => setDraft(e.target.value)}
+																onKeyDown={onKeyDown}
+																onBlur={onBlur}
+															/>
+															{col.purchaseHint && inputType === 'text' && (
+																<div className="absolute top-full left-0 z-30 min-w-[18rem]">
+																	<PurchaseHint
+																		query={draft}
+																		onInteractStart={() => {
+																			skipBlurCancel.current = true;
+																		}}
+																	/>
+																</div>
 															)}
-															value={draft}
-															onChange={(e) => setDraft(e.target.value)}
-															onKeyDown={onKeyDown}
-															onBlur={onBlur}
-														/>
+														</>
 													)}
 												</td>
 											);
