@@ -335,8 +335,8 @@ export function ReceiptImportModal({
 						<LoadingScreen />
 					)}
 					<p className="text-muted text-sm">
-						Drag the handles to crop. Frame the receipt or bank screenshot. The cropped image is
-						sent to AI and saved with the transaction(s).
+						Drag corners for a slanted document crop, or edge handles to move one side at a time.
+						The selection is flattened for AI scan and saved with the transaction(s).
 					</p>
 					<Button variant="secondary" size="sm" onClick={handlePickFile}>
 						Choose a different image

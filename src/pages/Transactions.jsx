@@ -6,7 +6,7 @@ import { categoriesApi, transactionsApi, useFinanceBalance } from '../lib/resour
 import { fetchAllPages } from '../lib/fetchAll';
 import { mediaUrl } from '../lib/receiptScan';
 import { STATUS_TONE } from '../lib/status';
-import { cn, formatCost, formatDate, formatDateShort } from '../lib/format';
+import { cn, formatCost, formatDate, formatDateShort, parseDateShort } from '../lib/format';
 import { toast } from '../stores/toastStore';
 import { useListControls } from '../hooks/useListControls';
 import { ReceiptImportModal } from '../components/finance/ReceiptImportModal';
@@ -180,6 +180,15 @@ export default function TransactionsPage() {
 	const commitCell = ({ id, field, value, patch }) => {
 		const body = patch ? { id, ...patch } : { id, [field]: value };
 
+		if (Object.prototype.hasOwnProperty.call(body, 'date_effective')) {
+			const iso = parseDateShort(body.date_effective);
+			if (!iso) {
+				toast.error('Use date format DD/MM/YY.');
+				return;
+			}
+			body.date_effective = iso;
+		}
+
 		if (body.category === '' || body.category === undefined) {
 			if (field === 'category') body.category = null;
 			else delete body.category;
@@ -279,11 +288,11 @@ export default function TransactionsPage() {
 				key: 'date_effective',
 				label: 'Effective',
 				editable: true,
-				inputType: 'date',
+				inputType: 'text',
 				required: true,
 				className: 'w-[11%]',
 				getDisplay: (row) => (row.date_effective ? formatDateShort(row.date_effective) : '—'),
-				getDraft: (row) => row.date_effective || ''
+				getDraft: (row) => (row.date_effective ? formatDateShort(row.date_effective) : '')
 			},
 			{
 				key: 'actions',

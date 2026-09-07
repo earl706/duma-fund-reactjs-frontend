@@ -1,4 +1,12 @@
-import { format, formatDistanceToNow, isToday, isTomorrow, parseISO } from 'date-fns';
+import {
+	format,
+	formatDistanceToNow,
+	isToday,
+	isTomorrow,
+	isValid,
+	parse,
+	parseISO
+} from 'date-fns';
 
 export const cn = (...parts) => parts.filter(Boolean).join(' ');
 
@@ -11,6 +19,27 @@ export function formatDate(value, pattern = 'MMM d, yyyy') {
 /** Compact date for spreadsheet cells (e.g. 02/09/26). */
 export function formatDateShort(value) {
 	return formatDate(value, 'dd/MM/yy');
+}
+
+const DATE_SHORT_PATTERNS = ['dd/MM/yy', 'dd/MM/yyyy', 'd/M/yy', 'd/M/yyyy'];
+
+/**
+ * Parse a short display date (DD/MM/YY) or ISO (YYYY-MM-DD) into YYYY-MM-DD.
+ * Returns null when the value cannot be parsed.
+ */
+export function parseDateShort(value) {
+	if (value == null) return null;
+	const trimmed = String(value).trim();
+	if (!trimmed) return null;
+	if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+		const iso = parseISO(trimmed);
+		return isValid(iso) ? trimmed : null;
+	}
+	for (const pattern of DATE_SHORT_PATTERNS) {
+		const parsed = parse(trimmed, pattern, new Date());
+		if (isValid(parsed)) return format(parsed, 'yyyy-MM-dd');
+	}
+	return null;
 }
 
 /** Human, context-aware due-date label. */

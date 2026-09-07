@@ -9,7 +9,7 @@ export const DEFAULT_LLM_CONFIG = {
 	openaiApiKey: '',
 	openaiModel: 'gpt-4o-mini',
 	geminiApiKey: '',
-	geminiModel: 'gemini-3.6-flash'
+	geminiModel: 'gemini-3.5-flash'
 };
 
 function loadConfig() {
@@ -97,3 +97,24 @@ export const useLlmStore = create((set, get) => ({
 		set(patch);
 	}
 }));
+
+/** Active provider credentials for scan, or null to use server env. */
+export function getActiveLlmCredentials() {
+	const { provider, openaiApiKey, openaiModel, geminiApiKey, geminiModel } = useLlmStore.getState();
+	if (provider === 'gemini') {
+		const apiKey = geminiApiKey.trim();
+		if (!apiKey) return null;
+		return {
+			provider: 'gemini',
+			apiKey,
+			model: (geminiModel || DEFAULT_LLM_CONFIG.geminiModel).trim()
+		};
+	}
+	const apiKey = openaiApiKey.trim();
+	if (!apiKey) return null;
+	return {
+		provider: 'openai',
+		apiKey,
+		model: (openaiModel || DEFAULT_LLM_CONFIG.openaiModel).trim()
+	};
+}

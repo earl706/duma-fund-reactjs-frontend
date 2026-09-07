@@ -198,7 +198,7 @@ export default function SettingsPage() {
 					</Card>
 
 					<Card>
-						<CardHeader title="Receipt AI" subtitle="Provider keys for this browser only" />
+						<CardHeader title="Receipt AI" subtitle="Used for receipt scan when a key is saved" />
 						<CardBody className="space-y-4">
 							<div>
 								<span className="text-fg mb-1.5 block text-sm font-medium">Provider</span>
@@ -285,13 +285,14 @@ export default function SettingsPage() {
 											setGemini({ model: geminiModelDraft });
 											setGeminiModelDraft(null);
 										}}
-										placeholder="gemini-3.6-flash"
+										placeholder="gemini-3.5-flash"
 									/>
 								</>
 							)}
 
 							<p className="text-muted text-xs">
-								Stored only in this browser. Receipt scan still uses the server configuration.
+								Stored in this browser and sent with receipt scans (over HTTPS). When set for the
+								selected provider, these override the server env keys.
 							</p>
 							<Button
 								type="button"

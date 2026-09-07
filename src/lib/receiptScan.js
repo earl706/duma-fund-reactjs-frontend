@@ -1,4 +1,5 @@
 import { api, post } from './api';
+import { getActiveLlmCredentials } from '../stores/llmStore';
 
 const UNIT_OPTIONS = ['pcs', 'kg', 'g', 'L', 'mL'];
 
@@ -20,6 +21,12 @@ export function mediaUrl(path) {
 export async function scanReceipt(file) {
 	const form = new FormData();
 	form.append('image', file);
+	const llm = getActiveLlmCredentials();
+	if (llm) {
+		form.append('llm_provider', llm.provider);
+		form.append('llm_api_key', llm.apiKey);
+		form.append('llm_model', llm.model);
+	}
 	const { data } = await api.post('/finance/transactions/scan-receipt/', form, {
 		headers: { 'Content-Type': 'multipart/form-data' }
 	});
