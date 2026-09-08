@@ -15,6 +15,7 @@ import { toast } from '../../stores/toastStore';
 import { Button, Input, LoadingScreen, Modal } from '../ui';
 import { PurchaseHint } from './PurchaseHint';
 import { ReceiptCropper } from './ReceiptCropper';
+import { CategoryMultiSelect, MAX_EXPENSE_CATEGORIES } from './CategoryMultiSelect';
 
 function todayISO() {
 	const d = new Date();
@@ -65,6 +66,7 @@ export function ReceiptImportModal({
 	const [dateEffective, setDateEffective] = useState('');
 	const [merchant, setMerchant] = useState('');
 	const [headerCategoryId, setHeaderCategoryId] = useState('');
+	const [headerCategoryIds, setHeaderCategoryIds] = useState([]);
 	const sourceUrl = useObjectUrl(originalFile);
 	const previewUrl = useObjectUrl(file);
 
@@ -78,8 +80,20 @@ export function ReceiptImportModal({
 		incomeCategories.find((c) => c.name === 'Other' && !c.parent)?.id ||
 		incomeCategories[0]?.id;
 
-	const effectiveHeaderCategoryId =
-		headerCategoryId || (fallbackCategoryId ? String(fallbackCategoryId) : '');
+	const expenseOptions = useMemo(
+		() => categories.map((c) => ({ value: String(c.id), label: c.name })),
+		[categories]
+	);
+
+	const effectiveHeaderIds =
+		headerCategoryIds.length > 0
+			? headerCategoryIds
+			: fallbackCategoryId
+				? [Number(fallbackCategoryId)]
+				: [];
+	const effectivePrimaryId = headerCategoryId
+		? Number(headerCategoryId)
+		: (effectiveHeaderIds[0] ?? null);
 
 	const reset = () => {
 		setRows([]);
@@ -91,6 +105,7 @@ export function ReceiptImportModal({
 		setOriginalFile(null);
 		setCroppedAreaPixels(null);
 		setHeaderCategoryId('');
+		setHeaderCategoryIds([]);
 	};
 
 	const handleClose = () => {
@@ -113,6 +128,7 @@ export function ReceiptImportModal({
 		setMerchant('');
 		setFile(null);
 		setHeaderCategoryId('');
+		setHeaderCategoryIds([]);
 		setCroppedAreaPixels(null);
 		setOriginalFile(picked);
 	};
@@ -148,7 +164,13 @@ export function ReceiptImportModal({
 				return;
 			}
 			const effective = data.date_effective || todayISO();
-			const headerCat = data.category_id || fallbackCategoryId;
+			const rolled =
+				Array.isArray(data.category_ids) && data.category_ids.length
+					? data.category_ids.map(Number).slice(0, MAX_EXPENSE_CATEGORIES)
+					: data.category_id || fallbackCategoryId
+						? [Number(data.category_id || fallbackCategoryId)]
+						: [];
+			const primary = data.category_id || rolled[0] || fallbackCategoryId;
 			setFile(cropped);
 			setOriginalFile(null);
 			setCroppedAreaPixels(null);
@@ -156,8 +178,9 @@ export function ReceiptImportModal({
 			setBankEntries([]);
 			setDateEffective(effective);
 			setMerchant(data.merchant || '');
-			setHeaderCategoryId(headerCat ? String(headerCat) : '');
-			setRows(normalizeDraftItems(data.items, headerCat));
+			setHeaderCategoryId(primary ? String(primary) : '');
+			setHeaderCategoryIds(rolled);
+			setRows(normalizeDraftItems(data.items));
 		} catch (err) {
 			const detail = err?.response?.data?.detail;
 			toast.error(detail || err?.message || 'Could not scan image.');
@@ -170,12 +193,12 @@ export function ReceiptImportModal({
 	const removeBankEntry = (key) => setBankEntries((prev) => prev.filter((row) => row._key !== key));
 
 	const handleCommitRetail = async () => {
-		if (!rows.length || !effectiveHeaderCategoryId) {
+		if (!rows.length || !effectiveHeaderIds.length) {
 			toast.error('Category and at least one item are required.');
 			return;
 		}
-		if (rows.some((r) => !r.title.trim() || !r.category_id)) {
-			toast.error('Every row needs a title and category.');
+		if (rows.some((r) => !r.title.trim())) {
+			toast.error('Every row needs a title.');
 			return;
 		}
 
@@ -187,14 +210,14 @@ export function ReceiptImportModal({
 				title: merchant.trim() || 'Receipt',
 				merchant: merchant.trim(),
 				note: '',
-				category_id: Number(effectiveHeaderCategoryId),
+				category_id: effectivePrimaryId,
+				category_ids: effectiveHeaderIds,
 				date_effective: dateEffective || undefined,
-				items: rows.map(({ title, cost, quantity, unit, category_id }) => ({
+				items: rows.map(({ title, cost, quantity, unit }) => ({
 					title: title.trim(),
 					cost,
 					quantity,
-					unit,
-					category_id: Number(category_id)
+					unit
 				}))
 			});
 			toast.success('Receipt logged as expense.');
@@ -370,38 +393,34 @@ export function ReceiptImportModal({
 					</div>
 
 					<label className="block text-sm">
-						<span className="text-fg mb-1.5 block font-medium">Receipt category</span>
-						<select
-							className="border-line bg-surface text-fg w-full rounded-md border px-3 py-2 text-sm"
-							value={effectiveHeaderCategoryId}
-							onChange={(e) => setHeaderCategoryId(e.target.value)}
-						>
-							{categories.map((c) => (
-								<option key={c.id} value={c.id}>
-									{c.name}
-								</option>
-							))}
-						</select>
+						<span className="text-fg mb-1.5 block font-medium">Receipt categories</span>
+						<CategoryMultiSelect
+							options={expenseOptions}
+							value={effectiveHeaderIds}
+							primaryId={effectivePrimaryId}
+							max={MAX_EXPENSE_CATEGORIES}
+							onChange={({ ids, primaryId }) => {
+								setHeaderCategoryIds(ids);
+								setHeaderCategoryId(primaryId != null ? String(primaryId) : '');
+							}}
+						/>
 					</label>
 
 					<div className="border-line overflow-x-auto rounded-md border">
-						<table className="w-full min-w-[760px] table-fixed border-collapse text-sm">
+						<table className="w-full min-w-[640px] table-fixed border-collapse text-sm">
 							<thead>
 								<tr className="bg-surface-2 border-line border-b">
-									<th className="text-muted w-[32%] px-2 py-2 text-left text-xs font-semibold uppercase">
+									<th className="text-muted w-[40%] px-2 py-2 text-left text-xs font-semibold uppercase">
 										Title
 									</th>
-									<th className="text-muted w-20 px-2 py-2 text-right text-xs font-semibold uppercase">
+									<th className="text-muted w-24 px-2 py-2 text-right text-xs font-semibold uppercase">
 										Price
 									</th>
-									<th className="text-muted w-20 px-2 py-2 text-right text-xs font-semibold uppercase">
+									<th className="text-muted w-24 px-2 py-2 text-right text-xs font-semibold uppercase">
 										Qty
 									</th>
-									<th className="text-muted w-16 px-2 py-2 text-left text-xs font-semibold uppercase">
+									<th className="text-muted w-20 px-2 py-2 text-left text-xs font-semibold uppercase">
 										Unit
-									</th>
-									<th className="text-muted w-[22%] px-2 py-2 text-left text-xs font-semibold uppercase">
-										Category
 									</th>
 									<th className="w-10" />
 								</tr>
@@ -445,34 +464,17 @@ export function ReceiptImportModal({
 											</td>
 											<td className="p-1">
 												<select
-													className="border-line bg-surface text-fg w-full rounded-sm border px-2 py-1.5 text-sm"
-													value={row.unit}
-													onChange={(e) =>
-														setRows((prev) => updateRow(prev, row._key, 'unit', e.target.value))
-													}
-												>
-													{UNIT_OPTIONS.map((unit) => (
-														<option key={unit} value={unit}>
-															{unit}
-														</option>
-													))}
-												</select>
-											</td>
-											<td className="p-1">
-												<select
-													className="border-line bg-surface text-fg w-full rounded-sm border px-2 py-1.5 text-sm"
-													value={row.category_id}
-													onChange={(e) =>
-														setRows((prev) =>
-															updateRow(prev, row._key, 'category_id', e.target.value)
-														)
-													}
-												>
-													{categories.map((c) => (
-														<option key={c.id} value={c.id}>
-															{c.name}
-														</option>
-													))}
+												className="border-line bg-surface text-fg w-full rounded-sm border px-2 py-1.5 text-sm"
+												value={row.unit}
+												onChange={(e) =>
+													setRows((prev) => updateRow(prev, row._key, 'unit', e.target.value))
+												}
+											>
+												{UNIT_OPTIONS.map((unit) => (
+													<option key={unit} value={unit}>
+														{unit}
+													</option>
+												))}
 												</select>
 											</td>
 											<td className="p-1 text-center">
@@ -488,7 +490,7 @@ export function ReceiptImportModal({
 											</td>
 										</tr>
 										<tr className="border-line border-b last:border-b-0">
-											<td colSpan={6} className="px-1 pb-2">
+											<td colSpan={5} className="px-1 pb-2">
 												<PurchaseHint query={row.title} className="mt-0 w-full max-w-none" />
 											</td>
 										</tr>

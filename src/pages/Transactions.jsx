@@ -10,6 +10,10 @@ import { cn, formatCost, formatDate, formatDateShort, parseDateShort } from '../
 import { toast } from '../stores/toastStore';
 import { useListControls } from '../hooks/useListControls';
 import { ReceiptImportModal } from '../components/finance/ReceiptImportModal';
+import {
+	formatCategoryTags,
+	MAX_EXPENSE_CATEGORIES
+} from '../components/finance/CategoryMultiSelect';
 import { PageHeader } from '../components/layout/PageHeader';
 import {
 	Badge,
@@ -107,12 +111,14 @@ export default function TransactionsPage() {
 	const defaultIncomeCategoryId =
 		incomeCategories.find((c) => c.name === 'Other' && !c.parent)?.id || incomeCategories[0]?.id;
 
-	const categorySelectOptions = useMemo(() => {
-		return [...expenseCategories, ...incomeCategories].map((c) => ({
-			value: String(c.id),
-			label: `${c.kind === 'income' ? '↑' : '↓'} ${c.name}`
-		}));
-	}, [expenseCategories, incomeCategories]);
+	const expenseSelectOptions = useMemo(
+		() => expenseCategories.map((c) => ({ value: String(c.id), label: c.name })),
+		[expenseCategories]
+	);
+	const incomeSelectOptions = useMemo(
+		() => incomeCategories.map((c) => ({ value: String(c.id), label: c.name })),
+		[incomeCategories]
+	);
 
 	const { search, setSearch, ordering, setOrdering, filters, setFilter, queryParams } =
 		useListControls({ defaultOrdering: '-date_effective' });
@@ -171,6 +177,7 @@ export default function TransactionsPage() {
 			amount: '0.00',
 			note: '',
 			category: defaultExpenseCategoryId,
+			categories: [defaultExpenseCategoryId],
 			status: 'active',
 			date_created: todayISO(),
 			date_effective: todayISO()
@@ -189,8 +196,11 @@ export default function TransactionsPage() {
 			body.date_effective = iso;
 		}
 
-		if (body.category === '' || body.category === undefined) {
-			if (field === 'category') body.category = null;
+		if (Array.isArray(body.categories)) {
+			body.categories = body.categories.map(Number);
+			if (body.category != null) body.category = Number(body.category);
+		} else if (body.category === '' || body.category === undefined) {
+			if (field === 'category' || field === 'categories') body.category = null;
 			else delete body.category;
 		} else if (body.category != null) {
 			body.category = Number(body.category);
@@ -199,6 +209,7 @@ export default function TransactionsPage() {
 		// Type changes must carry a compatible category (or none for transfers).
 		if (body.type === 'transfer_in' || body.type === 'transfer_out') {
 			body.category = null;
+			body.categories = [];
 		} else if (body.type === 'income') {
 			const current =
 				allCategories.get(body.category) ||
@@ -210,16 +221,19 @@ export default function TransactionsPage() {
 				}
 				body.category = defaultIncomeCategoryId;
 			}
+			body.categories = [];
 		} else if (body.type === 'expense') {
-			const current =
-				allCategories.get(body.category) ||
-				allCategories.get(rows.find((r) => r.id === id)?.category);
+			const row = rows.find((r) => r.id === id);
+			const current = allCategories.get(body.category) || allCategories.get(row?.category);
 			if (!current || current.kind !== 'expense') {
 				if (!defaultExpenseCategoryId) {
 					toast.error('Create an expense category first.');
 					return;
 				}
 				body.category = defaultExpenseCategoryId;
+				body.categories = [defaultExpenseCategoryId];
+			} else if (!body.categories?.length) {
+				body.categories = row?.categories?.length ? row.categories : [body.category];
 			}
 		}
 
@@ -263,18 +277,43 @@ export default function TransactionsPage() {
 				render: (row) => <SignedAmount amount={row.amount} type={row.type} />
 			},
 			{
-				key: 'category',
+				key: 'categories',
 				label: 'Category',
 				editable: true,
-				type: 'select',
-				options: [{ value: '', label: '—' }, ...categorySelectOptions],
+				type: 'txn-category',
+				required: true,
+				maxSelections: MAX_EXPENSE_CATEGORIES,
+				expenseOptions: expenseSelectOptions,
+				incomeOptions: incomeSelectOptions,
 				className: 'w-[14%]',
 				getDisplay: (row) => {
+					if (row.type === 'transfer_in' || row.type === 'transfer_out') return '—';
+					if (row.type === 'expense') {
+						return formatCategoryTags(
+							row.categories?.length ? row.categories : row.category ? [row.category] : [],
+							allCategories,
+							row.category
+						);
+					}
 					if (!row.category) return '—';
 					const cat = allCategories.get(row.category);
 					return cat ? cat.name : `#${row.category}`;
 				},
-				getDraft: (row) => (row.category != null ? String(row.category) : '')
+				getDraft: (row) => {
+					if (row.type === 'expense') {
+						const ids = row.categories?.length
+							? row.categories
+							: row.category
+								? [row.category]
+								: [];
+						return JSON.stringify({ ids, primaryId: row.category ?? ids[0] ?? null });
+					}
+					return row.category != null ? String(row.category) : '';
+				},
+				buildPatch: (ids, primaryId) => ({
+					category: primaryId,
+					categories: ids
+				})
 			},
 			{
 				key: 'status',
@@ -302,12 +341,20 @@ export default function TransactionsPage() {
 				className: 'w-[4.5rem]'
 			}
 		],
-		[allCategories, categorySelectOptions]
+		[allCategories, expenseSelectOptions, incomeSelectOptions]
 	);
 
 	const infoFields = (txn) => {
 		if (!txn) return [];
 		const cat = txn.category != null ? allCategories.get(txn.category) : null;
+		const expenseTags =
+			txn.type === 'expense'
+				? formatCategoryTags(
+						txn.categories?.length ? txn.categories : txn.category ? [txn.category] : [],
+						allCategories,
+						txn.category
+					)
+				: categoryLabel(cat);
 		return [
 			{ label: 'Title', value: txn.title || '—' },
 			{ label: 'Store', value: txn.merchant || 'Unknown' },
@@ -316,7 +363,7 @@ export default function TransactionsPage() {
 				label: 'Amount',
 				value: <SignedAmount amount={txn.amount} type={txn.type} />
 			},
-			{ label: 'Category', value: categoryLabel(cat) },
+			{ label: 'Category', value: expenseTags },
 			{
 				label: 'Status',
 				value: (

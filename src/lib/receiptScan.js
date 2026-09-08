@@ -41,6 +41,7 @@ export async function commitReceipt({
 	merchant,
 	note,
 	category_id,
+	category_ids,
 	date_effective,
 	items,
 	entries
@@ -53,6 +54,9 @@ export async function commitReceipt({
 	form.append('note', note || '');
 	if (category_id != null && category_id !== '') {
 		form.append('category_id', String(category_id));
+	}
+	if (Array.isArray(category_ids) && category_ids.length) {
+		form.append('category_ids', JSON.stringify(category_ids));
 	}
 	if (date_effective) form.append('date_effective', date_effective);
 	if (document_kind === 'bank_slip') {
@@ -78,14 +82,13 @@ export function draftRowKey(row, index) {
 	return row._key || `row-${index}`;
 }
 
-export function normalizeDraftItems(items, fallbackCategoryId) {
+export function normalizeDraftItems(items) {
 	return (items || []).map((item, index) => ({
 		_key: `draft-${index}-${Date.now()}`,
 		title: item.title || '',
 		cost: item.cost ?? '0.00',
 		quantity: item.quantity ?? '1.00',
-		unit: UNIT_OPTIONS.includes(item.unit) ? item.unit : 'pcs',
-		category_id: item.category_id ?? fallbackCategoryId ?? ''
+		unit: UNIT_OPTIONS.includes(item.unit) ? item.unit : 'pcs'
 	}));
 }
 

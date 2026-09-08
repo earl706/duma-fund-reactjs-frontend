@@ -209,7 +209,7 @@ export default function DashboardPage() {
 			<Card>
 				<CardHeader
 					title="Spend mix"
-					subtitle="Line-item categories and starting vs spent this period"
+					subtitle="Expense categories and starting vs spent this period"
 					action={
 						<div className="flex flex-wrap items-center justify-end gap-2">
 							<div className="border-line bg-surface-2 inline-flex rounded-md border p-0.5">

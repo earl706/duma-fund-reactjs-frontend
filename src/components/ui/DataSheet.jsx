@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { ExternalLink, Info, Plus, Trash2 } from 'lucide-react';
 
 import { cn } from '../../lib/format';
+import { CategoryMultiSelect } from '../finance/CategoryMultiSelect';
 import { PurchaseHint } from '../finance/PurchaseHint';
 import { Button } from './Button';
 
@@ -31,6 +32,8 @@ function StatusDot({ status }) {
  *
  * Column type `qty-unit`: number + unit select in one cell. Commit sends
  * `{ id, field, value, patch: { [field]: qty, [unitKey]: unit } }`.
+ * Column type `multi-select`: checkbox list (expense categories). Commit sends
+ * `{ id, field, value, patch }` from `col.buildPatch(ids, primaryId)`.
  */
 export function DataSheet({
 	rows,
@@ -232,6 +235,9 @@ export function DataSheet({
 	const startEdit = (row, field) => {
 		if (!editableKeys.has(field) || saving) return;
 		const col = columns.find((c) => c.key === field);
+		if (col?.isEditable && !col.isEditable(row)) return;
+		if (col?.type === 'txn-category' && row.type === 'transfer_in') return;
+		if (col?.type === 'txn-category' && row.type === 'transfer_out') return;
 		setEdit({ id: row.id, field });
 		setDraft(getDraft(row, field));
 		if (col?.type === 'qty-unit') setDraftUnit(getUnitDraft(row, col));
@@ -257,6 +263,56 @@ export function DataSheet({
 				field,
 				value: qtyNormalized,
 				patch: { [field]: qtyNormalized, [unitKey]: nextUnit }
+			});
+			return;
+		}
+
+		if (
+			col?.type === 'multi-select' ||
+			(col?.type === 'txn-category' && targetRow.type === 'expense')
+		) {
+			let parsed = nextValue;
+			if (typeof nextValue === 'string') {
+				try {
+					parsed = JSON.parse(nextValue);
+				} catch {
+					return;
+				}
+			}
+			const ids = (parsed?.ids || []).map(Number);
+			const primaryId = parsed?.primaryId != null ? Number(parsed.primaryId) : ids[0];
+			const prevRaw = getDraft(targetRow, field);
+			let prevObj = { ids: [] };
+			try {
+				prevObj = JSON.parse(prevRaw || '{"ids":[]}');
+			} catch {
+				/* ignore */
+			}
+			if (
+				JSON.stringify({ ids, primaryId }) ===
+				JSON.stringify({ ids: prevObj.ids, primaryId: prevObj.primaryId })
+			) {
+				return;
+			}
+			if (col.required && !ids.length) return;
+			const patch = col.buildPatch
+				? col.buildPatch(ids, primaryId, targetRow)
+				: { category: primaryId, categories: ids };
+			onCommit?.({ id: targetRow.id, field, value: ids, patch });
+			return;
+		}
+
+		if (col?.type === 'txn-category' && targetRow.type === 'income') {
+			const shouldTrim = true;
+			const normalized = shouldTrim ? String(nextValue).trim() : nextValue;
+			const prev = getDraft(targetRow, field);
+			if (col?.required && !String(normalized).trim()) return;
+			if (String(normalized) === String(prev)) return;
+			onCommit?.({
+				id: targetRow.id,
+				field,
+				value: normalized,
+				patch: { category: Number(normalized) }
 			});
 			return;
 		}
@@ -345,6 +401,8 @@ export function DataSheet({
 				cancelEdit();
 				return;
 			}
+		} else if (col?.type === 'multi-select') {
+			// committed via Done / onChange apply
 		} else {
 			const shouldTrim = col?.inputType !== 'number';
 			const normalized = shouldTrim ? String(nextValue).trim() : nextValue;
@@ -594,7 +652,63 @@ export function DataSheet({
 
 											return (
 												<td key={col.key} className={cn('relative p-0', col.className)}>
-													{col.type === 'select' || col.type === 'status-icon' ? (
+													{col.type === 'multi-select' ||
+													(col.type === 'txn-category' && row.type === 'expense') ? (
+														<div
+															ref={editorRef}
+															className="border-primary bg-surface absolute top-0 left-0 z-40 min-w-[14rem] border shadow-md"
+															onMouseDown={() => {
+																skipBlurCancel.current = true;
+															}}
+														>
+															<CategoryMultiSelect
+																options={(col.expenseOptions || col.options || []).map((o) => o)}
+																max={col.maxSelections || 5}
+																value={(() => {
+																	try {
+																		return JSON.parse(draft || '{"ids":[]}').ids || [];
+																	} catch {
+																		return [];
+																	}
+																})()}
+																primaryId={(() => {
+																	try {
+																		return JSON.parse(draft || '{}').primaryId ?? null;
+																	} catch {
+																		return null;
+																	}
+																})()}
+																onChange={({ ids, primaryId }) => {
+																	setDraft(JSON.stringify({ ids, primaryId }));
+																}}
+															/>
+															<div className="border-line flex justify-end gap-1 border-t px-1.5 py-1">
+																<Button
+																	variant="ghost"
+																	size="sm"
+																	className="h-6 text-[10px]"
+																	onClick={() => {
+																		skipBlurCancel.current = true;
+																		cancelEdit();
+																	}}
+																>
+																	Cancel
+																</Button>
+																<Button
+																	size="sm"
+																	className="h-6 text-[10px]"
+																	onClick={() => {
+																		skipBlurCancel.current = true;
+																		commitEdit();
+																	}}
+																>
+																	Done
+																</Button>
+															</div>
+														</div>
+													) : col.type === 'select' ||
+													  col.type === 'status-icon' ||
+													  (col.type === 'txn-category' && row.type === 'income') ? (
 														<select
 															ref={inputRef}
 															className="border-primary bg-surface text-fg h-7 w-full border px-1.5 text-xs focus:outline-none"
@@ -606,7 +720,10 @@ export function DataSheet({
 															onKeyDown={onKeyDown}
 															onBlur={onBlur}
 														>
-															{(col.options || []).map((opt) => (
+															{(col.type === 'txn-category'
+																? col.incomeOptions || []
+																: col.options || []
+															).map((opt) => (
 																<option key={opt.value} value={opt.value}>
 																	{opt.label}
 																</option>

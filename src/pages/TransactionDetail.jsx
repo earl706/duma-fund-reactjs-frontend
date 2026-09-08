@@ -21,6 +21,11 @@ import { toast } from '../stores/toastStore';
 import { useListControls } from '../hooks/useListControls';
 import { GroceryExportModal } from '../components/costs/GroceryExportModal';
 import { ReceiptImportModal } from '../components/finance/ReceiptImportModal';
+import {
+	CategoryMultiSelect,
+	formatCategoryTags,
+	MAX_EXPENSE_CATEGORIES
+} from '../components/finance/CategoryMultiSelect';
 import { PageHeader } from '../components/layout/PageHeader';
 import {
 	Badge,
@@ -104,6 +109,26 @@ export default function TransactionDetailPage() {
 		[expenseCategories]
 	);
 
+	const headerCategoryIds = useMemo(() => {
+		if (!txn || txn.type !== 'expense') return [];
+		if (txn.categories?.length) return txn.categories.map(Number);
+		return txn.category != null ? [Number(txn.category)] : [];
+	}, [txn]);
+
+	const [categoryDraftIds, setCategoryDraftIds] = useState(null);
+	const [categoryDraftPrimary, setCategoryDraftPrimary] = useState(null);
+
+	useEffect(() => {
+		setCategoryDraftIds(null);
+		setCategoryDraftPrimary(null);
+	}, [txn?.id, txn?.updated_at]);
+
+	const editingCategories = categoryDraftIds != null;
+	const displayCategoryIds = editingCategories ? categoryDraftIds : headerCategoryIds;
+	const displayPrimary = editingCategories
+		? categoryDraftPrimary
+		: (txn?.category ?? headerCategoryIds[0] ?? null);
+
 	const { search, setSearch, ordering, setOrdering, filters, setFilter, queryParams } =
 		useListControls({ defaultOrdering: 'title' });
 
@@ -177,22 +202,38 @@ export default function TransactionDetailPage() {
 	});
 
 	const addItem = () => {
-		if (!isExpense || createItem.isPending || !defaultCategoryId) return;
+		if (!isExpense || createItem.isPending) return;
 		createItem.mutate({
 			title: 'Untitled',
 			status: 'active',
 			cost: '0.00',
 			quantity: '1.00',
 			unit: 'pcs',
-			category: defaultCategoryId,
 			date_created: todayISO()
 		});
 	};
 
 	const commitCell = ({ id: itemId, field, value, patch }) => {
 		const body = patch ? { id: itemId, ...patch } : { id: itemId, [field]: value };
-		if (body.category != null) body.category = Number(body.category);
 		updateItem.mutate(body);
+	};
+
+	const saveHeaderCategories = () => {
+		if (!txnId || !displayCategoryIds?.length) return;
+		updateTxn.mutate(
+			{
+				id: txnId,
+				category: displayPrimary,
+				categories: displayCategoryIds
+			},
+			{
+				onSuccess: () => {
+					setCategoryDraftIds(null);
+					setCategoryDraftPrimary(null);
+					toast.success('Categories updated.');
+				}
+			}
+		);
 	};
 
 	const columns = useMemo(
@@ -202,7 +243,7 @@ export default function TransactionDetailPage() {
 				label: 'Title',
 				editable: true,
 				required: true,
-				className: 'w-[36%]',
+				className: 'w-[40%]',
 				purchaseHint: true
 			},
 			{
@@ -211,7 +252,7 @@ export default function TransactionDetailPage() {
 				editable: true,
 				align: 'right',
 				inputType: 'number',
-				className: 'w-[10%]',
+				className: 'w-[12%]',
 				getDisplay: (row) => formatCost(row.cost),
 				getDraft: (row) => String(row.cost ?? '')
 			},
@@ -223,7 +264,7 @@ export default function TransactionDetailPage() {
 				unitKey: 'unit',
 				unitOptions: UNIT_OPTIONS,
 				align: 'right',
-				className: 'w-[12%]',
+				className: 'w-[14%]',
 				getDisplay: (row) => `${formatQty(row.quantity)} ${row.unit || 'pcs'}`,
 				getDraft: (row) => String(row.quantity ?? ''),
 				getUnitDraft: (row) => row.unit || 'pcs'
@@ -232,18 +273,8 @@ export default function TransactionDetailPage() {
 				key: 'line_total',
 				label: 'Total',
 				align: 'right',
-				className: 'w-[10%]',
+				className: 'w-[12%]',
 				getDisplay: (row) => formatCost(lineTotal(row))
-			},
-			{
-				key: 'category',
-				label: 'Category',
-				editable: true,
-				type: 'select',
-				options: categoryOptions,
-				className: 'w-[14%]',
-				getDisplay: (row) => categoryMap.get(row.category)?.name || '—',
-				getDraft: (row) => (row.category != null ? String(row.category) : '')
 			},
 			{
 				key: 'status',
@@ -261,7 +292,7 @@ export default function TransactionDetailPage() {
 				className: 'w-[4.5rem]'
 			}
 		],
-		[categoryMap, categoryOptions]
+		[]
 	);
 
 	const openExport = async () => {
@@ -352,6 +383,45 @@ export default function TransactionDetailPage() {
 						View receipt image
 					</button>
 				</p>
+			)}
+
+			{isExpense && (
+				<div className="border-line bg-surface mb-4 max-w-md rounded-md border p-3">
+					<div className="mb-2 flex items-baseline justify-between gap-2">
+						<span className="text-fg text-sm font-medium">Categories</span>
+						<span className="text-muted text-xs">
+							{formatCategoryTags(displayCategoryIds, categoryMap, displayPrimary)}
+						</span>
+					</div>
+					<CategoryMultiSelect
+						options={categoryOptions}
+						value={displayCategoryIds}
+						primaryId={displayPrimary}
+						max={MAX_EXPENSE_CATEGORIES}
+						disabled={updateTxn.isPending}
+						onChange={({ ids, primaryId }) => {
+							setCategoryDraftIds(ids);
+							setCategoryDraftPrimary(primaryId);
+						}}
+					/>
+					{editingCategories && (
+						<div className="mt-2 flex justify-end gap-2">
+							<Button
+								variant="secondary"
+								size="sm"
+								onClick={() => {
+									setCategoryDraftIds(null);
+									setCategoryDraftPrimary(null);
+								}}
+							>
+								Cancel
+							</Button>
+							<Button size="sm" loading={updateTxn.isPending} onClick={saveHeaderCategories}>
+								Save categories
+							</Button>
+						</div>
+					)}
+				</div>
 			)}
 
 			{!isExpense ? (
@@ -477,10 +547,6 @@ export default function TransactionDetailPage() {
 									value: `${formatQty(infoTarget.quantity)} ${infoTarget.unit || 'pcs'}`
 								},
 								{ label: 'Line total', value: formatCost(lineTotal(infoTarget)) },
-								{
-									label: 'Category',
-									value: categoryMap.get(infoTarget.category)?.name || '—'
-								},
 								{
 									label: 'Status',
 									value: (
