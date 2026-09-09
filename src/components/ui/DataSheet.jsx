@@ -221,6 +221,11 @@ export function DataSheet({
 		setEdit({ id: autoEdit.id, field: autoEdit.field });
 		setDraft(getDraft(row, autoEdit.field));
 		if (col?.type === 'qty-unit') setDraftUnit(getUnitDraft(row, col));
+		requestAnimationFrame(() => {
+			document
+				.querySelector(`[data-row-id="${CSS.escape(String(autoEdit.id))}"]`)
+				?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+		});
 		// eslint-disable-next-line react-hooks/exhaustive-deps -- only re-enter on autoEdit key / row presence
 	}, [autoEdit, rows]);
 

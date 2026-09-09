@@ -86,10 +86,15 @@ function measureContainedLayout(stage, img, naturalW, naturalH) {
  * Corners stay inside the image; output is { corners: [tl, tr, br, bl] }
  * in natural image pixels for perspective warp.
  */
-export function ReceiptCropper({ imageSrc, onCropPixelsChange }) {
+export function ReceiptCropper({
+	imageSrc,
+	onCropPixelsChange,
+	initialCorners: initialCornersProp = null
+}) {
 	const stageRef = useRef(null);
 	const imgRef = useRef(null);
 	const dragRef = useRef(null);
+	const initialCornersRef = useRef(initialCornersProp);
 	const maskId = useId().replace(/:/g, '');
 	const [naturalSize, setNaturalSize] = useState(null);
 	const [layout, setLayout] = useState(null);
@@ -177,7 +182,12 @@ export function ReceiptCropper({ imageSrc, onCropPixelsChange }) {
 		const w = img.naturalWidth || img.width;
 		const h = img.naturalHeight || img.height;
 		setNaturalSize({ w, h });
-		setCorners(initialCorners(w, h));
+		const saved = initialCornersRef.current;
+		const start =
+			Array.isArray(saved) && saved.length === 4 && isConvexQuad(saved)
+				? saved.map((p) => clampCorner({ x: Number(p.x), y: Number(p.y) }, w, h))
+				: initialCorners(w, h);
+		setCorners(start);
 		requestAnimationFrame(() => {
 			const next = measureContainedLayout(stageRef.current, img, w, h);
 			if (next) setLayout(next);

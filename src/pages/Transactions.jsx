@@ -1,10 +1,10 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeftRight, Plus, ScanLine } from 'lucide-react';
 
 import { categoriesApi, transactionsApi, useFinanceBalance } from '../lib/resources';
 import { fetchAllPages } from '../lib/fetchAll';
-import { mediaUrl } from '../lib/receiptScan';
+import { firstCommittedTransactionId, mediaUrl } from '../lib/receiptScan';
 import { STATUS_TONE } from '../lib/status';
 import { cn, formatCost, formatDate, formatDateShort, parseDateShort } from '../lib/format';
 import { toast } from '../stores/toastStore';
@@ -143,8 +143,20 @@ export default function TransactionsPage() {
 	const [bulkDeleteIds, setBulkDeleteIds] = useState(null);
 	const [infoTarget, setInfoTarget] = useState(null);
 	const [autoEdit, setAutoEdit] = useState(null);
+	const [pendingFocusId, setPendingFocusId] = useState(null);
 	const [bulkDeleting, setBulkDeleting] = useState(false);
 	const [scanOpen, setScanOpen] = useState(false);
+
+	useEffect(() => {
+		if (pendingFocusId == null) return;
+		if (!rows.some((r) => r.id === pendingFocusId)) return;
+		setAutoEdit({
+			id: pendingFocusId,
+			field: 'title',
+			key: `${pendingFocusId}-${Date.now()}`
+		});
+		setPendingFocusId(null);
+	}, [rows, pendingFocusId]);
 
 	const createTxn = transactionsApi.useCreate({
 		onSuccess: (created) => {
@@ -552,8 +564,12 @@ export default function TransactionsPage() {
 				onClose={() => setScanOpen(false)}
 				categories={expenseCategories}
 				incomeCategories={incomeCategories}
-				onCommitted={() => {
-					queryClient.invalidateQueries({ queryKey: ['finance-transactions'] });
+				onCommitted={async (created) => {
+					const focusId = firstCommittedTransactionId(created);
+					// Newest logged first — receipt date_effective often buries new rows mid-list.
+					setOrdering('-date_created');
+					if (focusId != null) setPendingFocusId(focusId);
+					await queryClient.invalidateQueries({ queryKey: ['finance-transactions'] });
 					queryClient.invalidateQueries({ queryKey: ['finance-balance'] });
 					queryClient.invalidateQueries({ queryKey: ['finance-analytics'] });
 				}}

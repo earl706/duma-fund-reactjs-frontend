@@ -622,14 +622,10 @@ export default function TransactionDetailPage() {
 				categories={expenseCategories}
 				incomeCategories={incomeCategories}
 				defaultCategoryId={defaultCategoryId}
-				onCommitted={(created) => {
+				onCommitted={() => {
 					queryClient.invalidateQueries({ queryKey: ['finance-transactions'] });
 					queryClient.invalidateQueries({ queryKey: ['finance-transaction-items'] });
 					queryClient.invalidateQueries({ queryKey: ['finance-balance'] });
-					const nextId = created?.results?.[0]?.id || created?.id;
-					if (nextId && nextId !== txnId) {
-						navigate(`/transactions/${nextId}`);
-					}
 				}}
 			/>
 		</div>
