@@ -5,6 +5,7 @@ import { ArrowLeft, ArrowLeftRight, ImageDown, Plus, ScanLine } from 'lucide-rea
 
 import { categoriesApi, transactionItemsApi, transactionsApi } from '../lib/resources';
 import { fetchAllPages } from '../lib/fetchAll';
+import { isMobileApp } from '../lib/desktop';
 import { mediaUrl } from '../lib/receiptScan';
 import { STATUS_TONE } from '../lib/status';
 import { formatCost, formatDate } from '../lib/format';
@@ -87,6 +88,7 @@ export default function TransactionDetailPage() {
 	const { id } = useParams();
 	const navigate = useNavigate();
 	const queryClient = useQueryClient();
+	const mobile = isMobileApp();
 	const txnId = id ? Number(id) : null;
 
 	const { data: txn, isLoading: txnLoading, isError: txnError } = transactionsApi.useDetail(txnId);
@@ -354,9 +356,11 @@ export default function TransactionDetailPage() {
 				actions={
 					isExpense ? (
 						<div className="flex flex-wrap gap-2">
-							<Button variant="secondary" onClick={() => setScanOpen(true)}>
-								<ScanLine size={16} /> Scan receipt
-							</Button>
+							{!mobile && (
+								<Button variant="secondary" onClick={() => setScanOpen(true)}>
+									<ScanLine size={16} /> Scan receipt
+								</Button>
+							)}
 							<Button
 								variant="secondary"
 								onClick={openExport}
@@ -616,18 +620,20 @@ export default function TransactionDetailPage() {
 				}}
 			/>
 
-			<ReceiptImportModal
-				open={scanOpen}
-				onClose={() => setScanOpen(false)}
-				categories={expenseCategories}
-				incomeCategories={incomeCategories}
-				defaultCategoryId={defaultCategoryId}
-				onCommitted={() => {
-					queryClient.invalidateQueries({ queryKey: ['finance-transactions'] });
-					queryClient.invalidateQueries({ queryKey: ['finance-transaction-items'] });
-					queryClient.invalidateQueries({ queryKey: ['finance-balance'] });
-				}}
-			/>
+			{!mobile && (
+				<ReceiptImportModal
+					open={scanOpen}
+					onClose={() => setScanOpen(false)}
+					categories={expenseCategories}
+					incomeCategories={incomeCategories}
+					defaultCategoryId={defaultCategoryId}
+					onCommitted={() => {
+						queryClient.invalidateQueries({ queryKey: ['finance-transactions'] });
+						queryClient.invalidateQueries({ queryKey: ['finance-transaction-items'] });
+						queryClient.invalidateQueries({ queryKey: ['finance-balance'] });
+					}}
+				/>
+			)}
 		</div>
 	);
 }

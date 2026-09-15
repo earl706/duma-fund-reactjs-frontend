@@ -30,7 +30,7 @@ export default function OAuthCallbackPage() {
 
 	if (error) {
 		return (
-			<div className="bg-bg flex min-h-screen items-center justify-center p-6">
+			<div className="bg-bg flex min-h-full items-center justify-center p-6">
 				<div className="text-center">
 					<p className="text-danger mb-4">Sign-in failed ({error}).</p>
 					<a href="/login" className="text-primary text-sm">

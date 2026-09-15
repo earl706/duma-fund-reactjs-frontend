@@ -22,7 +22,7 @@ function RememberMeCheckbox({ checked, onChange }) {
 
 export function AuthShell({ children }) {
 	return (
-		<div className="bg-bg flex min-h-screen">
+		<div className="bg-bg flex min-h-full">
 			<div className="bg-primary relative hidden w-1/2 overflow-hidden lg:block">
 				<div className="text-primary-fg relative flex h-full flex-col justify-between p-12">
 					<div className="flex items-center gap-2">

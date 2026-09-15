@@ -1,16 +1,19 @@
 import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { LogOut, Settings as SettingsIcon, Shield } from 'lucide-react';
+import { LogOut, Search, Settings as SettingsIcon, Shield } from 'lucide-react';
 
 import { patch } from '../lib/api';
+import { isMobileApp } from '../lib/desktop';
 import { updateStartingBalance, useFinanceBalance } from '../lib/resources';
 import { formatCost } from '../lib/format';
 import { toast } from '../stores/toastStore';
 import { useAuthStore } from '../stores/authStore';
 import { LLM_PROVIDERS, useLlmStore } from '../stores/llmStore';
 import { useThemeStore } from '../stores/themeStore';
+import { useUIStore } from '../stores/uiStore';
 import { MfaDisableSection, MfaSetupModal } from '../components/auth/MfaModals';
 import { PageHeader } from '../components/layout/PageHeader';
+import { PurchaseAlertList } from '../components/layout/PurchaseNotifications';
 import { Avatar, Button, Card, CardBody, CardHeader, Input } from '../components/ui';
 
 const PROVIDER_LABELS = {
@@ -24,6 +27,8 @@ export default function SettingsPage() {
 	const logout = useAuthStore((s) => s.logout);
 	const updateUser = useAuthStore((s) => s.updateUser);
 	const { theme, setTheme } = useThemeStore();
+	const openPalette = useUIStore((s) => s.openPalette);
+	const mobile = isMobileApp();
 	const {
 		provider,
 		openaiApiKey,
@@ -88,6 +93,20 @@ export default function SettingsPage() {
 			/>
 
 			<div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+				{mobile && (
+					<Card>
+						<CardHeader
+							title="Shortcuts"
+							subtitle="Search and alerts used to live in the top bar"
+						/>
+						<CardBody className="space-y-4">
+							<Button variant="secondary" className="w-full" onClick={openPalette}>
+								<Search size={16} /> Search transactions
+							</Button>
+							<PurchaseAlertList />
+						</CardBody>
+					</Card>
+				)}
 				<Card>
 					<CardHeader title="Account" />
 					<CardBody className="space-y-4">

@@ -1,15 +1,18 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeftRight, Plus, ScanLine } from 'lucide-react';
 
 import { categoriesApi, transactionsApi, useFinanceBalance } from '../lib/resources';
 import { fetchAllPages } from '../lib/fetchAll';
+import { isMobileApp } from '../lib/desktop';
 import { firstCommittedTransactionId, mediaUrl } from '../lib/receiptScan';
 import { STATUS_TONE } from '../lib/status';
 import { cn, formatCost, formatDate, formatDateShort, parseDateShort } from '../lib/format';
 import { toast } from '../stores/toastStore';
 import { useListControls } from '../hooks/useListControls';
 import { ReceiptImportModal } from '../components/finance/ReceiptImportModal';
+import { MobileTransactionsView } from '../components/finance/MobileTransactionsView';
 import {
 	formatCategoryTags,
 	MAX_EXPENSE_CATEGORIES
@@ -93,7 +96,9 @@ function categoryLabel(cat) {
 }
 
 export default function TransactionsPage() {
+	const navigate = useNavigate();
 	const queryClient = useQueryClient();
+	const mobile = isMobileApp();
 	const { data: balance } = useFinanceBalance();
 	const { data: categoriesData } = categoriesApi.useList({ page_size: 100, kind: 'expense' });
 	const { data: incomeCats } = categoriesApi.useList({ page_size: 100, kind: 'income' });
@@ -121,7 +126,10 @@ export default function TransactionsPage() {
 	);
 
 	const { search, setSearch, ordering, setOrdering, filters, setFilter, queryParams } =
-		useListControls({ defaultOrdering: '-date_effective' });
+		useListControls({
+			defaultOrdering: '-date_effective',
+			defaultFilters: mobile ? { status: 'active' } : {}
+		});
 
 	const listParams = useMemo(() => {
 		const rest = { ...queryParams };
@@ -162,9 +170,12 @@ export default function TransactionsPage() {
 		onSuccess: (created) => {
 			toast.success('Transaction created.');
 			queryClient.invalidateQueries({ queryKey: ['finance-balance'] });
-			if (created?.id != null) {
-				setAutoEdit({ id: created.id, field: 'title', key: `${created.id}-${Date.now()}` });
+			if (created?.id == null) return;
+			if (mobile) {
+				navigate(`/transactions/${created.id}`);
+				return;
 			}
+			setAutoEdit({ id: created.id, field: 'title', key: `${created.id}-${Date.now()}` });
 		}
 	});
 	const updateTxn = transactionsApi.useUpdate({
@@ -406,6 +417,23 @@ export default function TransactionsPage() {
 		];
 	};
 
+	if (mobile) {
+		return (
+			<MobileTransactionsView
+				balance={balance}
+				rows={rows}
+				isLoading={isLoading}
+				isError={isError}
+				search={search}
+				setSearch={setSearch}
+				filters={filters}
+				setFilter={setFilter}
+				onAdd={addExpense}
+				adding={createTxn.isPending}
+			/>
+		);
+	}
+
 	return (
 		<div>
 			<PageHeader
@@ -418,9 +446,11 @@ export default function TransactionsPage() {
 				}
 				actions={
 					<div className="flex flex-wrap gap-2">
-						<Button variant="secondary" onClick={() => setScanOpen(true)}>
-							<ScanLine size={16} /> Scan receipt
-						</Button>
+						{!mobile && (
+							<Button variant="secondary" onClick={() => setScanOpen(true)}>
+								<ScanLine size={16} /> Scan receipt
+							</Button>
+						)}
 						<Button onClick={addExpense} loading={createTxn.isPending}>
 							<Plus size={16} /> New expense
 						</Button>
@@ -559,21 +589,23 @@ export default function TransactionsPage() {
 				fields={infoFields(infoTarget)}
 			/>
 
-			<ReceiptImportModal
-				open={scanOpen}
-				onClose={() => setScanOpen(false)}
-				categories={expenseCategories}
-				incomeCategories={incomeCategories}
-				onCommitted={async (created) => {
-					const focusId = firstCommittedTransactionId(created);
-					// Newest logged first — receipt date_effective often buries new rows mid-list.
-					setOrdering('-date_created');
-					if (focusId != null) setPendingFocusId(focusId);
-					await queryClient.invalidateQueries({ queryKey: ['finance-transactions'] });
-					queryClient.invalidateQueries({ queryKey: ['finance-balance'] });
-					queryClient.invalidateQueries({ queryKey: ['finance-analytics'] });
-				}}
-			/>
+			{!mobile && (
+				<ReceiptImportModal
+					open={scanOpen}
+					onClose={() => setScanOpen(false)}
+					categories={expenseCategories}
+					incomeCategories={incomeCategories}
+					onCommitted={async (created) => {
+						const focusId = firstCommittedTransactionId(created);
+						// Newest logged first — receipt date_effective often buries new rows mid-list.
+						setOrdering('-date_created');
+						if (focusId != null) setPendingFocusId(focusId);
+						await queryClient.invalidateQueries({ queryKey: ['finance-transactions'] });
+						queryClient.invalidateQueries({ queryKey: ['finance-balance'] });
+						queryClient.invalidateQueries({ queryKey: ['finance-analytics'] });
+					}}
+				/>
+			)}
 		</div>
 	);
 }

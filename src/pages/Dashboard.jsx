@@ -5,6 +5,7 @@ import { Cell, Legend, Pie, PieChart, ResponsiveContainer, Tooltip } from 'recha
 import { format, parseISO } from 'date-fns';
 import { useQueryClient } from '@tanstack/react-query';
 
+import { isMobileApp } from '../lib/desktop';
 import { useAuthStore } from '../stores/authStore';
 import { categoriesApi, useFinanceBalance, useFinanceBreakdown } from '../lib/resources';
 import { usePurchaseInsights } from '../lib/purchases';
@@ -55,7 +56,7 @@ function greeting() {
 	const hour = new Date().getHours();
 	if (hour < 12) return 'Good morning';
 	if (hour < 18) return 'Good afternoon';
-	return 'Good evening';
+	return 'Good evening asdadasd';
 }
 
 function CompactPie({ title, data, colors, emptyLabel }) {
@@ -127,6 +128,7 @@ function CompactPie({ title, data, colors, emptyLabel }) {
 export default function DashboardPage() {
 	const queryClient = useQueryClient();
 	const user = useAuthStore((s) => s.user);
+	const mobile = isMobileApp();
 	const name = user?.full_name?.split(' ')[0] || 'there';
 	const [period, setPeriod] = useState('week');
 	const [includeArchived, setIncludeArchived] = useState(false);
@@ -192,9 +194,11 @@ export default function DashboardPage() {
 				icon={LayoutDashboard}
 				description={`Category and balance mix for ${rangeLabel}.`}
 				actions={
-					<Button variant="secondary" onClick={() => setScanOpen(true)}>
-						<ScanLine size={16} /> Scan receipt
-					</Button>
+					mobile ? null : (
+						<Button variant="secondary" onClick={() => setScanOpen(true)}>
+							<ScanLine size={16} /> Scan receipt
+						</Button>
+					)
 				}
 			/>
 
@@ -264,21 +268,23 @@ export default function DashboardPage() {
 				</CardBody>
 			</Card>
 
-			<ReceiptImportModal
-				open={scanOpen}
-				onClose={() => setScanOpen(false)}
-				categories={expenseCategories}
-				incomeCategories={incomeCategories}
-				onCommitted={() => {
-					queryClient.invalidateQueries({ queryKey: ['finance-transactions'] });
-					queryClient.invalidateQueries({ queryKey: ['finance-balance'] });
-					queryClient.invalidateQueries({ queryKey: ['finance-analytics'] });
-					queryClient.invalidateQueries({ queryKey: ['finance-analytics-breakdown'] });
-					queryClient.invalidateQueries({ queryKey: ['finance-purchase-insights'] });
-					queryClient.invalidateQueries({ queryKey: ['finance-purchase-notifications'] });
-					queryClient.invalidateQueries({ queryKey: ['finance-purchase-lookup'] });
-				}}
-			/>
+			{!mobile && (
+				<ReceiptImportModal
+					open={scanOpen}
+					onClose={() => setScanOpen(false)}
+					categories={expenseCategories}
+					incomeCategories={incomeCategories}
+					onCommitted={() => {
+						queryClient.invalidateQueries({ queryKey: ['finance-transactions'] });
+						queryClient.invalidateQueries({ queryKey: ['finance-balance'] });
+						queryClient.invalidateQueries({ queryKey: ['finance-analytics'] });
+						queryClient.invalidateQueries({ queryKey: ['finance-analytics-breakdown'] });
+						queryClient.invalidateQueries({ queryKey: ['finance-purchase-insights'] });
+						queryClient.invalidateQueries({ queryKey: ['finance-purchase-notifications'] });
+						queryClient.invalidateQueries({ queryKey: ['finance-purchase-lookup'] });
+					}}
+				/>
+			)}
 		</div>
 	);
 }
