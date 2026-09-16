@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 
-import { api, tokenStore } from '../lib/api';
+import { api, getApiBaseURL, tokenStore } from '../lib/api';
 import { effectiveRememberMe } from '../lib/desktop';
 
 function isTransientAuthError(err) {
@@ -8,8 +8,6 @@ function isTransientAuthError(err) {
 	const status = err.response.status;
 	return status >= 500 || status === 429;
 }
-
-const baseURL = import.meta.env.VITE_API_BASE_URL || '/api';
 
 function applySession(set, data) {
 	if (data.mfa_required) {
@@ -139,7 +137,7 @@ export const useAuthStore = create((set, get) => ({
 	},
 
 	oauthStart(provider) {
-		window.location.assign(`${baseURL}/auth/oauth/${provider}/start/`);
+		window.location.assign(`${getApiBaseURL()}/auth/oauth/${provider}/start/`);
 	},
 
 	async completeOAuth(code) {

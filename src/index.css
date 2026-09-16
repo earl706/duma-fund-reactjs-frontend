@@ -10,35 +10,35 @@
    `bg-surface`, `text-muted`, `border-line`, etc. all respond to the theme.
    -------------------------------------------------------------------------- */
 :root {
-  --bg: #f7f7fb;
+  --bg: #fef9f3;
   --surface: #ffffff;
-  --surface-2: #f1f2f7;
-  --line: #e4e4ec;
+  --surface-2: #f1e7d7;
+  --line: #e4d5c4;
   --fg: #1a1726;
-  --muted: #6b6779;
-  --primary: #6d5efc;
+  --muted: #7a6f66;
+  --primary: #751423;
   --primary-fg: #ffffff;
-  --accent: #ec4899;
+  --accent: #c55963;
   --success: #10b981;
   --warning: #f59e0b;
   --danger: #ef4444;
-  --ring: rgba(109, 94, 252, 0.4);
+  --ring: rgba(117, 20, 35, 0.4);
 }
 
 .dark {
-  --bg: #0d0c12;
-  --surface: #16151d;
-  --surface-2: #1e1d27;
-  --line: #2b2937;
-  --fg: #ececf1;
-  --muted: #9b97aa;
-  --primary: #8b7dff;
-  --primary-fg: #0d0c12;
-  --accent: #f472b6;
+  --bg: #011627;
+  --surface: #0e1c2a;
+  --surface-2: #162433;
+  --line: #2a3a48;
+  --fg: #f4eee9;
+  --muted: #9aa3ad;
+  --primary: #c55963;
+  --primary-fg: #fef9f3;
+  --accent: #d17c83;
   --success: #34d399;
   --warning: #fbbf24;
   --danger: #f87171;
-  --ring: rgba(139, 125, 255, 0.45);
+  --ring: rgba(197, 89, 99, 0.45);
 }
 
 @theme inline {

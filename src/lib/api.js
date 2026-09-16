@@ -1,7 +1,10 @@
 import axios from 'axios';
 
-const ACCESS_KEY = 'dumafund.access';
-const REFRESH_KEY = 'dumafund.refresh';
+import { isMobileApp } from './desktop';
+
+const ACCESS_KEY = isMobileApp() ? 'dumafund.mobile.access' : 'dumafund.access';
+const REFRESH_KEY = isMobileApp() ? 'dumafund.mobile.refresh' : 'dumafund.refresh';
+const baseURL = import.meta.env.VITE_API_BASE_URL || '/api';
 const COOKIE_MAX_AGE = 90 * 24 * 60 * 60;
 
 function cookieGet(name) {
@@ -79,9 +82,11 @@ export const tokenStore = {
 	}
 };
 
-const baseURL = import.meta.env.VITE_API_BASE_URL || '/api';
-
 export const api = axios.create({ baseURL });
+
+export function getApiBaseURL() {
+	return api.defaults.baseURL || baseURL;
+}
 
 api.interceptors.request.use((config) => {
 	const token = tokenStore.access;
@@ -108,7 +113,7 @@ let refreshPromise = null;
 export async function refreshAccessToken() {
 	const refresh = tokenStore.refresh;
 	if (!refresh) throw new Error('No refresh token');
-	const { data } = await axios.post(`${baseURL}/auth/refresh/`, { refresh });
+	const { data } = await axios.post(`${getApiBaseURL()}/auth/refresh/`, { refresh });
 	tokenStore.set({
 		access: data.access,
 		...(data.refresh ? { refresh: data.refresh } : {})

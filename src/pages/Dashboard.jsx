@@ -31,10 +31,10 @@ const PERIODS = [
 const CATEGORY_COLORS = [
 	'var(--primary)',
 	'var(--accent)',
-	'#5b8a72',
 	'#c4a35a',
-	'#7a6bb5',
-	'#8a8f98'
+	'#8a8f98',
+	'#a67c52',
+	'#d17c83'
 ];
 
 const BALANCE_COLORS = {

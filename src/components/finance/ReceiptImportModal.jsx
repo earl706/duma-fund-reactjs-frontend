@@ -546,10 +546,6 @@ export function ReceiptImportModal({
 					) : (
 						<LoadingScreen />
 					)}
-					<p className="text-muted text-sm">
-						Crop is optional — leave as-is to send the full image. Adjust corners or edges when you
-						want a tighter document crop. Analyze runs once for the whole batch.
-					</p>
 					<div className="flex flex-wrap gap-2">
 						{images.length < MAX_BULK_RECEIPTS && (
 							<Button variant="secondary" size="sm" onClick={handlePickFile}>

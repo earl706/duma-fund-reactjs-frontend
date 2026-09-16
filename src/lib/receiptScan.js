@@ -1,4 +1,4 @@
-import { api, post } from './api';
+import { api, getApiBaseURL, post } from './api';
 import { getActiveLlmCredentials } from '../stores/llmStore';
 
 const UNIT_OPTIONS = ['pcs', 'kg', 'g', 'L', 'mL'];
@@ -15,7 +15,7 @@ export const BANK_TXN_TYPES = [
 export function mediaUrl(path) {
 	if (!path) return null;
 	if (String(path).startsWith('http')) return path;
-	const apiBase = import.meta.env.VITE_API_BASE_URL || '/api';
+	const apiBase = getApiBaseURL();
 	const origin = apiBase.replace(/\/api\/?$/, '');
 	return `${origin}${path}`;
 }

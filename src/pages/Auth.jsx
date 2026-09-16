@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Link, Navigate, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { useAuthStore } from '../stores/authStore';
-import { defaultRememberMe } from '../lib/desktop';
+import { defaultRememberMe, isMobileApp } from '../lib/desktop';
 import { AppIcon, Button, Input, LoadingScreen } from '../components/ui';
 import PinInput from '../components/auth/PinInput';
 
@@ -50,25 +50,33 @@ export function AuthShell({ children }) {
 
 function OAuthButtons() {
 	const oauthStart = useAuthStore((s) => s.oauthStart);
+	if (isMobileApp()) return null;
 	return (
-		<div className="space-y-2">
-			<Button
-				type="button"
-				variant="secondary"
-				className="w-full"
-				onClick={() => oauthStart('google')}
-			>
-				Continue with Google
-			</Button>
-			<Button
-				type="button"
-				variant="secondary"
-				className="w-full"
-				onClick={() => oauthStart('github')}
-			>
-				Continue with GitHub
-			</Button>
-		</div>
+		<>
+			<div className="my-4 flex items-center gap-3">
+				<div className="bg-line h-px flex-1" />
+				<span className="text-muted text-xs">or</span>
+				<div className="bg-line h-px flex-1" />
+			</div>
+			<div className="space-y-2">
+				<Button
+					type="button"
+					variant="secondary"
+					className="w-full"
+					onClick={() => oauthStart('google')}
+				>
+					Continue with Google
+				</Button>
+				<Button
+					type="button"
+					variant="secondary"
+					className="w-full"
+					onClick={() => oauthStart('github')}
+				>
+					Continue with GitHub
+				</Button>
+			</div>
+		</>
 	);
 }
 
@@ -238,11 +246,6 @@ export function LoginPage() {
 					Sign in
 				</Button>
 			</form>
-			<div className="my-4 flex items-center gap-3">
-				<div className="bg-line h-px flex-1" />
-				<span className="text-muted text-xs">or</span>
-				<div className="bg-line h-px flex-1" />
-			</div>
 			<OAuthButtons />
 			<p className="text-muted mt-6 text-center text-sm">
 				No account?{' '}
@@ -280,6 +283,12 @@ export function RegisterPage() {
 	return (
 		<AuthShell>
 			<h2 className="text-fg text-2xl font-bold">Create account</h2>
+			{isMobileApp() && (
+				<p className="text-muted mt-2 text-sm">
+					If you already use DumaFund on your Mac, sign in with that email instead. New accounts:
+					open the verification link on the Mac, then sign in here.
+				</p>
+			)}
 			<form onSubmit={submit} className="mt-6 space-y-4">
 				<Input
 					label="Full name"
@@ -327,11 +336,6 @@ export function RegisterPage() {
 					Create account
 				</Button>
 			</form>
-			<div className="my-4 flex items-center gap-3">
-				<div className="bg-line h-px flex-1" />
-				<span className="text-muted text-xs">or</span>
-				<div className="bg-line h-px flex-1" />
-			</div>
 			<OAuthButtons />
 			<p className="text-muted mt-6 text-center text-sm">
 				Have an account?{' '}

@@ -1,9 +1,12 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 
+import { isMobileApp } from '../../lib/desktop';
 import { isConvexQuad } from '../../lib/cropImage';
 
 const MIN_SIDE = 24;
 const HANDLE_HIT = 14;
+const NARROW_MQ = '(max-width: 767px)';
+const PAD_FRACTION = 0.08;
 
 const CORNER_IDS = ['tl', 'tr', 'br', 'bl'];
 const EDGE_IDS = [
@@ -24,9 +27,33 @@ function clampCorner(p, naturalW, naturalH) {
 	};
 }
 
-function initialCorners(naturalW, naturalH) {
-	const insetX = Math.min(4, Math.max(1, Math.floor(naturalW * 0.005)));
-	const insetY = Math.min(4, Math.max(1, Math.floor(naturalH * 0.005)));
+function isPaddedInitialCrop() {
+	if (typeof window === 'undefined') return false;
+	if (isMobileApp()) return true;
+	return window.matchMedia(NARROW_MQ).matches;
+}
+
+function edgeTightInsets(naturalW, naturalH) {
+	return {
+		x: Math.min(4, Math.max(1, Math.floor(naturalW * 0.005))),
+		y: Math.min(4, Math.max(1, Math.floor(naturalH * 0.005)))
+	};
+}
+
+function paddedInsets(naturalW, naturalH) {
+	const pad = Math.max(MIN_SIDE, Math.round(Math.min(naturalW, naturalH) * PAD_FRACTION));
+	const maxX = Math.max(1, Math.floor((naturalW - MIN_SIDE) / 2) - 1);
+	const maxY = Math.max(1, Math.floor((naturalH - MIN_SIDE) / 2) - 1);
+	return {
+		x: Math.min(pad, maxX),
+		y: Math.min(pad, maxY)
+	};
+}
+
+function initialCorners(naturalW, naturalH, padded) {
+	const { x: insetX, y: insetY } = padded
+		? paddedInsets(naturalW, naturalH)
+		: edgeTightInsets(naturalW, naturalH);
 	return [
 		{ x: insetX, y: insetY },
 		{ x: naturalW - 1 - insetX, y: insetY },
@@ -85,6 +112,10 @@ function measureContainedLayout(stage, img, naturalW, naturalH) {
  * Document-style quad crop: independent edge midpoints + free corners.
  * Corners stay inside the image; output is { corners: [tl, tr, br, bl] }
  * in natural image pixels for perspective warp.
+ *
+ * Narrow / iOS viewports start ~8% inset so handles sit inside the photo
+ * and can be dragged toward the edges. That default is not reported as a
+ * crop — Analyze still sends the full image until the user moves a handle.
  */
 export function ReceiptCropper({
 	imageSrc,
@@ -95,6 +126,7 @@ export function ReceiptCropper({
 	const imgRef = useRef(null);
 	const dragRef = useRef(null);
 	const initialCornersRef = useRef(initialCornersProp);
+	const dirtyRef = useRef(Boolean(initialCornersProp));
 	const maskId = useId().replace(/:/g, '');
 	const [naturalSize, setNaturalSize] = useState(null);
 	const [layout, setLayout] = useState(null);
@@ -134,7 +166,7 @@ export function ReceiptCropper({
 	}, [measureLayout, imageSrc]);
 
 	useEffect(() => {
-		if (corners) report(corners);
+		if (corners && dirtyRef.current) report(corners);
 	}, [corners, report]);
 
 	const toDisplay = useCallback(
@@ -167,11 +199,12 @@ export function ReceiptCropper({
 	);
 
 	const trySetCorners = useCallback(
-		(next) => {
+		(next, fromUser = false) => {
 			if (!naturalSize) return;
 			const clamped = next.map((p) => clampCorner(p, naturalSize.w, naturalSize.h));
 			if (!isConvexQuad(clamped)) return;
 			if (quadMinSide(clamped) < MIN_SIDE) return;
+			if (fromUser) dirtyRef.current = true;
 			setCorners(clamped);
 		},
 		[naturalSize]
@@ -183,10 +216,11 @@ export function ReceiptCropper({
 		const h = img.naturalHeight || img.height;
 		setNaturalSize({ w, h });
 		const saved = initialCornersRef.current;
-		const start =
-			Array.isArray(saved) && saved.length === 4 && isConvexQuad(saved)
-				? saved.map((p) => clampCorner({ x: Number(p.x), y: Number(p.y) }, w, h))
-				: initialCorners(w, h);
+		const hasSaved = Array.isArray(saved) && saved.length === 4 && isConvexQuad(saved);
+		dirtyRef.current = hasSaved;
+		const start = hasSaved
+			? saved.map((p) => clampCorner({ x: Number(p.x), y: Number(p.y) }, w, h))
+			: initialCorners(w, h, isPaddedInitialCrop());
 		setCorners(start);
 		requestAnimationFrame(() => {
 			const next = measureContainedLayout(stageRef.current, img, w, h);
@@ -215,7 +249,7 @@ export function ReceiptCropper({
 		if (drag.kind === 'corner') {
 			const next = drag.startCorners.map((p) => ({ ...p }));
 			next[drag.index] = point;
-			trySetCorners(next);
+			trySetCorners(next, true);
 			return;
 		}
 
@@ -237,7 +271,7 @@ export function ReceiptCropper({
 				naturalSize.w,
 				naturalSize.h
 			);
-			trySetCorners(next);
+			trySetCorners(next, true);
 		}
 	};
 

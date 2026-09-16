@@ -20,6 +20,7 @@ export default function App() {
 		initTheme();
 		bootstrap();
 	}, [bootstrap, initTheme]);
+
 	return (
 		<QueryClientProvider client={queryClient}>
 			<BrowserRouter>
