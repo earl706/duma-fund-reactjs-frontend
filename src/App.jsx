@@ -15,11 +15,17 @@ function ThemedSuspense({ children }) {
 
 export default function App() {
 	const bootstrap = useAuthStore((s) => s.bootstrap);
+	const logout = useAuthStore((s) => s.logout);
 	const initTheme = useThemeStore((s) => s.init);
 	useEffect(() => {
 		initTheme();
 		bootstrap();
 	}, [bootstrap, initTheme]);
+	useEffect(() => {
+		const onExpired = () => logout();
+		window.addEventListener('dumafund:auth-expired', onExpired);
+		return () => window.removeEventListener('dumafund:auth-expired', onExpired);
+	}, [logout]);
 
 	return (
 		<QueryClientProvider client={queryClient}>

@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 
 import { cn } from '../../lib/format';
 import { AppIcon } from '../ui/AppIcon';
+import { ProfileSwitcher } from '../finance/ProfileSwitcher';
 import { useUIStore } from '../../stores/uiStore';
 import { navGroups } from './navItems';
 
@@ -44,6 +45,8 @@ export function SidebarContent() {
 				<AppIcon size={36} className="shrink-0" />
 				<span className="text-fg text-lg font-bold tracking-tight">DumaFund</span>
 			</div>
+
+			<ProfileSwitcher />
 
 			<nav className="flex-1 space-y-6 overflow-y-auto" aria-label="Primary">
 				{navGroups.map((group) => (

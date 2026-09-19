@@ -2,6 +2,7 @@ import { NavLink, useLocation } from 'react-router-dom';
 
 import { cn } from '../../lib/format';
 import { useUIStore } from '../../stores/uiStore';
+import { useCanEditLedger } from '../../stores/profileStore';
 import { mobileTabs } from './navItems';
 
 function isTabActive(tab, pathname) {
@@ -16,6 +17,7 @@ function isTabActive(tab, pathname) {
 export function MobileTabBar() {
 	const location = useLocation();
 	const { scanOpen, openScan } = useUIStore();
+	const canEdit = useCanEditLedger();
 
 	return (
 		<nav
@@ -30,10 +32,11 @@ export function MobileTabBar() {
 							<li key="scan" className="flex justify-center">
 								<button
 									type="button"
-									onClick={openScan}
+									onClick={canEdit ? openScan : undefined}
+									disabled={!canEdit}
 									aria-label="Scan receipt"
 									aria-pressed={scanOpen}
-									className="flex -translate-y-4 cursor-pointer flex-col items-center"
+									className="flex -translate-y-4 cursor-pointer flex-col items-center disabled:cursor-default disabled:opacity-40"
 								>
 									<span
 										className={cn(

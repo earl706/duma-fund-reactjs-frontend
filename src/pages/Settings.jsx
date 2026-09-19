@@ -8,6 +8,10 @@ import { updateStartingBalance, useFinanceBalance } from '../lib/resources';
 import { formatCost } from '../lib/format';
 import { toast } from '../stores/toastStore';
 import { useAuthStore } from '../stores/authStore';
+import { useIsProfileOwner, useProfileStore } from '../stores/profileStore';
+import { ProfileSettingsCard } from '../components/finance/ProfileSettingsCard';
+import { InviteList } from '../components/layout/InviteInbox';
+import { ProfileSwitcher } from '../components/finance/ProfileSwitcher';
 import { LLM_PROVIDERS, useLlmStore } from '../stores/llmStore';
 import { useThemeStore } from '../stores/themeStore';
 import { useUIStore } from '../stores/uiStore';
@@ -43,6 +47,8 @@ export default function SettingsPage() {
 	const [mfaSetupOpen, setMfaSetupOpen] = useState(false);
 	const [newEmail, setNewEmail] = useState('');
 	const { data: balance } = useFinanceBalance();
+	const isOwner = useIsProfileOwner();
+	const profileName = useProfileStore((s) => s.activeProfile()?.name);
 	const [startingDraft, setStartingDraft] = useState(null);
 	const [openaiKeyDraft, setOpenaiKeyDraft] = useState(null);
 	const [openaiModelDraft, setOpenaiModelDraft] = useState(null);
@@ -100,9 +106,11 @@ export default function SettingsPage() {
 							subtitle="Search and alerts used to live in the top bar"
 						/>
 						<CardBody className="space-y-4">
+							<ProfileSwitcher />
 							<Button variant="secondary" className="w-full" onClick={openPalette}>
 								<Search size={16} /> Search transactions
 							</Button>
+							<InviteList />
 							<PurchaseAlertList />
 						</CardBody>
 					</Card>
@@ -169,13 +177,14 @@ export default function SettingsPage() {
 				</Card>
 
 				<div className="space-y-4">
+					<ProfileSettingsCard />
 					<Card>
 						<CardHeader
 							title="Wallet"
 							subtitle={
 								balance
-									? `Current balance ${formatCost(balance.balance)}`
-									: 'Starting balance for derived ledger total'
+									? `${profileName || 'Profile'} · current ${formatCost(balance.balance)}`
+									: 'Starting balance for the active profile'
 							}
 						/>
 						<CardBody className="space-y-3">
@@ -184,18 +193,21 @@ export default function SettingsPage() {
 								type="number"
 								step="0.01"
 								value={startingValue}
-								onChange={(e) => setStartingDraft(e.target.value)}
+								onChange={(e) => isOwner && setStartingDraft(e.target.value)}
 								onBlur={() => {
-									if (startingDraft == null) return;
+									if (!isOwner || startingDraft == null) return;
 									if (String(startingDraft) === String(balance?.starting_balance)) {
 										setStartingDraft(null);
 										return;
 									}
 									saveStarting.mutate(startingDraft);
 								}}
+								disabled={!isOwner}
 							/>
 							<p className="text-muted text-xs">
-								Balance = starting + income − expense + transfers.
+								{isOwner
+									? 'Balance = starting + income − expense + transfers.'
+									: 'Only the profile owner can change the starting balance.'}
 							</p>
 						</CardBody>
 					</Card>

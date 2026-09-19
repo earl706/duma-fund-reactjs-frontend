@@ -195,7 +195,7 @@ export function LoginPage() {
 	const [loading, setLoading] = useState(false);
 
 	if (mfaRequired) return <MfaForm />;
-	if (status === 'idle' || status === 'loading') {
+	if ((status === 'idle' || status === 'loading') && !loading) {
 		return <LoadingScreen label="Restoring your session…" />;
 	}
 	if (status === 'authenticated' && user) {

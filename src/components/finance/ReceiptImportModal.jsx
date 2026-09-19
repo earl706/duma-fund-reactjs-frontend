@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronLeft, ChevronRight, ScanLine, Trash2 } from 'lucide-react';
+import { Camera, ChevronLeft, ChevronRight, Images, ScanLine, Trash2 } from 'lucide-react';
 
 import { getCroppedImageFile } from '../../lib/cropImage';
 import {
@@ -13,10 +13,14 @@ import {
 	UNIT_OPTIONS
 } from '../../lib/receiptScan';
 import { toast } from '../../stores/toastStore';
-import { Button, Input, LoadingScreen, Modal } from '../ui';
+import { cn } from '../../lib/format';
+import { Button, Input, LoadingScreen, Modal, Select } from '../ui';
 import { PurchaseHint } from './PurchaseHint';
 import { ReceiptCropper } from './ReceiptCropper';
 import { CategoryMultiSelect, MAX_EXPENSE_CATEGORIES } from './CategoryMultiSelect';
+
+const ACCEPT_IMAGES = 'image/jpeg,image/png,image/webp,image/*';
+const TABLE_INPUT = 'border-line bg-surface text-fg w-full rounded-sm border px-2 py-1.5 text-sm';
 
 function todayISO() {
 	const d = new Date();
@@ -43,6 +47,53 @@ function useObjectUrl(blob) {
 
 function newId(prefix = 'id') {
 	return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function StepperNav({ index, count, label, onPrev, onNext, disabled }) {
+	if (count <= 1) return null;
+	return (
+		<div className="flex items-center gap-2">
+			<Button
+				variant="secondary"
+				size="icon"
+				className="h-11 w-11 shrink-0 md:h-8 md:w-8"
+				disabled={index <= 0 || disabled}
+				onClick={onPrev}
+				aria-label="Previous"
+			>
+				<ChevronLeft size={18} />
+			</Button>
+			<span className="text-muted min-w-0 flex-1 text-center text-xs leading-snug tabular-nums md:text-sm">
+				{label}
+			</span>
+			<Button
+				variant="secondary"
+				size="icon"
+				className="h-11 w-11 shrink-0 md:h-8 md:w-8"
+				disabled={index >= count - 1 || disabled}
+				onClick={onNext}
+				aria-label="Next"
+			>
+				<ChevronRight size={18} />
+			</Button>
+		</div>
+	);
+}
+
+function PreviewThumb({ src, alt, className, imgClassName }) {
+	if (!src) return null;
+	return (
+		<div className={cn('bg-surface-2 flex justify-center rounded-md p-1.5 md:p-3', className)}>
+			<img
+				src={src}
+				alt={alt}
+				className={cn(
+					'w-auto max-w-full rounded-sm object-contain',
+					imgClassName || 'max-h-24 md:max-h-40'
+				)}
+			/>
+		</div>
+	);
 }
 
 async function prepareImageFile(originalFile, croppedAreaPixels) {
@@ -104,6 +155,7 @@ export function ReceiptImportModal({
 	onCommitted
 }) {
 	const fileRef = useRef(null);
+	const cameraRef = useRef(null);
 	const [analyzing, setAnalyzing] = useState(false);
 	const [analyzeLabel, setAnalyzeLabel] = useState('');
 	const [importing, setImporting] = useState(false);
@@ -152,6 +204,7 @@ export function ReceiptImportModal({
 	};
 
 	const handlePickFile = () => fileRef.current?.click();
+	const handleTakePhoto = () => cameraRef.current?.click();
 
 	const enqueueFiles = (fileList) => {
 		if (cropLocked) return;
@@ -470,8 +523,12 @@ export function ReceiptImportModal({
 					<Button variant="secondary" onClick={handleClose} disabled={analyzing || importing}>
 						Cancel
 					</Button>
-					{reviewing ? (
-						<Button loading={importing} onClick={handleCommitAll} disabled={analyzing}>
+					{analyzing ? (
+						<Button loading disabled>
+							{analyzeLabel || 'Analyzing…'}
+						</Button>
+					) : reviewing ? (
+						<Button loading={importing} onClick={handleCommitAll}>
 							{drafts.length === 1 ? 'Log receipt' : `Log all ${drafts.length}`}
 						</Button>
 					) : cropping ? (
@@ -484,7 +541,7 @@ export function ReceiptImportModal({
 							Retry failed
 						</Button>
 					) : (
-						<Button loading={analyzing} onClick={handlePickFile}>
+						<Button className="max-sm:hidden!" loading={analyzing} onClick={handlePickFile}>
 							<ScanLine size={16} /> Choose images
 						</Button>
 					)}
@@ -494,8 +551,16 @@ export function ReceiptImportModal({
 			<input
 				ref={fileRef}
 				type="file"
-				accept="image/jpeg,image/png,image/webp"
+				accept={ACCEPT_IMAGES}
 				multiple
+				className="hidden"
+				onChange={handleFile}
+			/>
+			<input
+				ref={cameraRef}
+				type="file"
+				accept="image/*"
+				capture="environment"
 				className="hidden"
 				onChange={handleFile}
 			/>
@@ -507,34 +572,15 @@ export function ReceiptImportModal({
 				</div>
 			) : cropping && currentImage ? (
 				<div className="space-y-3">
-					{images.length > 1 && (
-						<div className="flex items-center justify-between gap-2">
-							<Button
-								variant="secondary"
-								size="sm"
-								disabled={cropIndex <= 0}
-								onClick={() => setCropIndex((i) => Math.max(0, i - 1))}
-								aria-label="Previous image"
-							>
-								<ChevronLeft size={16} />
-								Prev
-							</Button>
-							<span className="text-muted text-sm tabular-nums">
-								Image {cropIndex + 1} of {images.length}
-								{currentImage.croppedAreaPixels ? ' · Cropped' : ' · Full image OK'}
-							</span>
-							<Button
-								variant="secondary"
-								size="sm"
-								disabled={cropIndex >= images.length - 1}
-								onClick={() => setCropIndex((i) => Math.min(images.length - 1, i + 1))}
-								aria-label="Next image"
-							>
-								Next
-								<ChevronRight size={16} />
-							</Button>
-						</div>
-					)}
+					<StepperNav
+						index={cropIndex}
+						count={images.length}
+						label={`Image ${cropIndex + 1} of ${images.length}${
+							currentImage.croppedAreaPixels ? ' · Cropped' : ' · Full image OK'
+						}`}
+						onPrev={() => setCropIndex((i) => Math.max(0, i - 1))}
+						onNext={() => setCropIndex((i) => Math.min(images.length - 1, i + 1))}
+					/>
 
 					{sourceUrl ? (
 						<ReceiptCropper
@@ -542,17 +588,40 @@ export function ReceiptImportModal({
 							imageSrc={sourceUrl}
 							initialCorners={currentImage.croppedAreaPixels?.corners || null}
 							onCropPixelsChange={updateCurrentCrop}
+							className="h-[min(58dvh,28rem)] md:h-[min(52vh,28rem)]"
 						/>
 					) : (
 						<LoadingScreen />
 					)}
-					<div className="flex flex-wrap gap-2">
+					<div className="flex flex-col gap-2 md:flex-row md:flex-wrap">
 						{images.length < MAX_BULK_RECEIPTS && (
-							<Button variant="secondary" size="sm" onClick={handlePickFile}>
-								Add images
-							</Button>
+							<>
+								<Button
+									variant="secondary"
+									size="sm"
+									className="h-11 w-full md:hidden"
+									onClick={handleTakePhoto}
+								>
+									<Camera size={16} /> Take photo
+								</Button>
+								<Button
+									variant="secondary"
+									size="sm"
+									className="h-11 w-full md:h-8 md:w-auto"
+									onClick={handlePickFile}
+								>
+									<Images size={16} />
+									<span className="md:hidden">Photo library</span>
+									<span className="hidden md:inline">Add images</span>
+								</Button>
+							</>
 						)}
-						<Button variant="ghost" size="sm" onClick={removeCurrentImage}>
+						<Button
+							variant="ghost"
+							size="sm"
+							className="h-11 w-full md:h-8 md:w-auto"
+							onClick={removeCurrentImage}
+						>
 							{images.length === 1 ? 'Clear' : 'Remove this image'}
 						</Button>
 					</div>
@@ -566,15 +635,19 @@ export function ReceiptImportModal({
 									? '1 image failed analysis'
 									: `${failures.length} images failed analysis`}
 							</p>
-							<ul className="text-muted space-y-1 text-sm">
+							<ul className="text-muted space-y-2 text-sm">
 								{failures.map((f) => (
-									<li key={f.id} className="flex items-start justify-between gap-2">
-										<span>
+									<li
+										key={f.id}
+										className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between sm:gap-2"
+									>
+										<span className="min-w-0 break-words">
 											<span className="text-fg">{f.name}</span> — {f.detail}
 										</span>
 										<Button
 											variant="ghost"
 											size="sm"
+											className="self-end sm:self-start"
 											onClick={() => dismissFailure(f.id)}
 											disabled={importing || analyzing}
 										>
@@ -586,6 +659,7 @@ export function ReceiptImportModal({
 							<Button
 								variant="secondary"
 								size="sm"
+								className="h-11 w-full md:h-8 md:w-auto"
 								loading={analyzing}
 								onClick={handleRetryFailures}
 								disabled={importing}
@@ -597,34 +671,16 @@ export function ReceiptImportModal({
 
 					{reviewing && currentDraft ? (
 						<>
-							{drafts.length > 1 && (
-								<div className="flex items-center justify-between gap-2">
-									<Button
-										variant="secondary"
-										size="sm"
-										disabled={reviewIndex <= 0 || importing}
-										onClick={() => setReviewIndex((i) => Math.max(0, i - 1))}
-										aria-label="Previous receipt"
-									>
-										<ChevronLeft size={16} />
-										Prev
-									</Button>
-									<span className="text-muted text-sm tabular-nums">
-										Receipt {reviewIndex + 1} of {drafts.length}
-										{currentDraft.documentKind === 'bank_slip' ? ' · Bank' : ' · Retail'}
-									</span>
-									<Button
-										variant="secondary"
-										size="sm"
-										disabled={reviewIndex >= drafts.length - 1 || importing}
-										onClick={() => setReviewIndex((i) => Math.min(drafts.length - 1, i + 1))}
-										aria-label="Next receipt"
-									>
-										Next
-										<ChevronRight size={16} />
-									</Button>
-								</div>
-							)}
+							<StepperNav
+								index={reviewIndex}
+								count={drafts.length}
+								label={`Receipt ${reviewIndex + 1} of ${drafts.length}${
+									currentDraft.documentKind === 'bank_slip' ? ' · Bank' : ' · Retail'
+								}`}
+								disabled={importing}
+								onPrev={() => setReviewIndex((i) => Math.max(0, i - 1))}
+								onNext={() => setReviewIndex((i) => Math.min(drafts.length - 1, i + 1))}
+							/>
 
 							{currentDraft.documentKind === 'retail_receipt' ? (
 								<RetailDraftEditor
@@ -654,6 +710,7 @@ export function ReceiptImportModal({
 								<Button
 									variant="ghost"
 									size="sm"
+									className="h-11 w-full md:h-8 md:w-auto"
 									onClick={() => removeDraft(currentDraft.id)}
 									disabled={importing}
 								>
@@ -664,11 +721,28 @@ export function ReceiptImportModal({
 					) : null}
 				</div>
 			) : (
-				<p className="text-muted text-sm">
-					Upload up to {MAX_BULK_RECEIPTS} retail receipts or bank screenshots. Crop each in the
-					carousel (optional), then analyze the batch with AI. Review drafts and log all in one
-					step.
-				</p>
+				<div className="border-line flex flex-col items-center gap-3 rounded-md border border-dashed px-4 py-8 text-center md:p-10">
+					<div className="bg-surface-2 text-muted flex h-12 w-12 items-center justify-center rounded-sm">
+						<ScanLine size={22} />
+					</div>
+					<div>
+						<p className="text-fg font-medium">Scan receipts</p>
+						<p className="text-muted mt-1 text-sm">
+							Up to {MAX_BULK_RECEIPTS} retail receipts or bank screenshots. Crop each photo
+							(optional), then analyze and log the batch.
+						</p>
+					</div>
+					<div className="flex w-full max-w-sm flex-col gap-2">
+						<Button className="h-12 w-full md:hidden" onClick={handleTakePhoto}>
+							<Camera size={16} /> Take photo
+						</Button>
+						<Button variant="secondary" className="h-12 w-full" onClick={handlePickFile}>
+							<Images size={16} />
+							<span className="md:hidden">Photo library</span>
+							<span className="hidden md:inline">Choose images</span>
+						</Button>
+					</div>
+				</div>
 			)}
 		</Modal>
 	);
@@ -694,31 +768,32 @@ function RetailDraftEditor({
 		? Number(draft.headerCategoryId)
 		: (effectiveHeaderIds[0] ?? null);
 
+	const setRow = (key, field, value) => onPatch({ rows: updateRow(draft.rows, key, field, value) });
+
 	return (
-		<div className="space-y-4">
-			{previewUrl && (
-				<div className="bg-surface-2 flex justify-center rounded-md p-3">
-					<img
-						src={previewUrl}
-						alt="Scanned receipt"
-						className="max-h-40 w-auto max-w-full rounded-sm object-contain"
+		<div className="space-y-4 pb-1">
+			<div className="flex items-start gap-3 md:block md:space-y-4">
+				<PreviewThumb
+					src={previewUrl}
+					alt="Scanned receipt"
+					className="w-20 shrink-0 md:w-auto"
+					imgClassName="max-h-24 md:max-h-40"
+				/>
+				<div className="grid min-w-0 flex-1 gap-3 sm:grid-cols-2">
+					<Input
+						label="Merchant / store"
+						value={draft.merchant}
+						onChange={(e) => onPatch({ merchant: e.target.value })}
+						placeholder="Unknown if blank"
+						autoComplete="off"
+					/>
+					<Input
+						label="Effective date"
+						type="date"
+						value={draft.dateEffective}
+						onChange={(e) => onPatch({ dateEffective: e.target.value })}
 					/>
 				</div>
-			)}
-
-			<div className="grid gap-3 sm:grid-cols-2">
-				<Input
-					label="Merchant / store"
-					value={draft.merchant}
-					onChange={(e) => onPatch({ merchant: e.target.value })}
-					placeholder="Unknown if blank"
-				/>
-				<Input
-					label="Effective date"
-					type="date"
-					value={draft.dateEffective}
-					onChange={(e) => onPatch({ dateEffective: e.target.value })}
-				/>
 			</div>
 
 			<label className="block text-sm">
@@ -737,7 +812,65 @@ function RetailDraftEditor({
 				/>
 			</label>
 
-			<div className="border-line overflow-x-auto rounded-md border">
+			<ul className="space-y-3 md:hidden">
+				{draft.rows.map((row, index) => (
+					<li key={row._key} className="border-line space-y-2.5 rounded-md border p-3">
+						<div className="flex items-end gap-2">
+							<div className="min-w-0 flex-1">
+								<Input
+									label={index === 0 ? 'Title' : `Item ${index + 1}`}
+									value={row.title}
+									autoComplete="off"
+									onChange={(e) => setRow(row._key, 'title', e.target.value)}
+								/>
+							</div>
+							<Button
+								variant="ghost"
+								size="icon"
+								className="mb-0.5 h-11 w-11 shrink-0"
+								onClick={() => onPatch({ rows: draft.rows.filter((r) => r._key !== row._key) })}
+								aria-label={`Remove ${row.title || 'row'}`}
+							>
+								<Trash2 size={16} />
+							</Button>
+						</div>
+						<div className="grid grid-cols-3 gap-2">
+							<Input
+								label="Price"
+								type="number"
+								inputMode="decimal"
+								min="0"
+								step="0.01"
+								value={row.cost}
+								onChange={(e) => setRow(row._key, 'cost', e.target.value)}
+							/>
+							<Input
+								label="Qty"
+								type="number"
+								inputMode="decimal"
+								min="0"
+								step="0.01"
+								value={row.quantity}
+								onChange={(e) => setRow(row._key, 'quantity', e.target.value)}
+							/>
+							<Select
+								label="Unit"
+								value={row.unit}
+								onChange={(e) => setRow(row._key, 'unit', e.target.value)}
+							>
+								{UNIT_OPTIONS.map((unit) => (
+									<option key={unit} value={unit}>
+										{unit}
+									</option>
+								))}
+							</Select>
+						</div>
+						<PurchaseHint query={row.title} className="mt-0 w-full max-w-none" />
+					</li>
+				))}
+			</ul>
+
+			<div className="border-line hidden overflow-x-auto rounded-md border md:block">
 				<table className="w-full min-w-[640px] table-fixed border-collapse text-sm">
 					<thead>
 						<tr className="bg-surface-2 border-line border-b">
@@ -762,13 +895,9 @@ function RetailDraftEditor({
 								<tr className="border-line align-top">
 									<td className="p-1">
 										<input
-											className="border-line bg-surface text-fg w-full rounded-sm border px-2 py-1.5 text-sm"
+											className={TABLE_INPUT}
 											value={row.title}
-											onChange={(e) =>
-												onPatch({
-													rows: updateRow(draft.rows, row._key, 'title', e.target.value)
-												})
-											}
+											onChange={(e) => setRow(row._key, 'title', e.target.value)}
 										/>
 									</td>
 									<td className="p-1">
@@ -776,13 +905,9 @@ function RetailDraftEditor({
 											type="number"
 											min="0"
 											step="0.01"
-											className="border-line bg-surface text-fg w-full rounded-sm border px-2 py-1.5 text-right text-sm tabular-nums"
+											className={`${TABLE_INPUT} text-right tabular-nums`}
 											value={row.cost}
-											onChange={(e) =>
-												onPatch({
-													rows: updateRow(draft.rows, row._key, 'cost', e.target.value)
-												})
-											}
+											onChange={(e) => setRow(row._key, 'cost', e.target.value)}
 										/>
 									</td>
 									<td className="p-1">
@@ -790,24 +915,16 @@ function RetailDraftEditor({
 											type="number"
 											min="0"
 											step="0.01"
-											className="border-line bg-surface text-fg w-full rounded-sm border px-2 py-1.5 text-right text-sm tabular-nums"
+											className={`${TABLE_INPUT} text-right tabular-nums`}
 											value={row.quantity}
-											onChange={(e) =>
-												onPatch({
-													rows: updateRow(draft.rows, row._key, 'quantity', e.target.value)
-												})
-											}
+											onChange={(e) => setRow(row._key, 'quantity', e.target.value)}
 										/>
 									</td>
 									<td className="p-1">
 										<select
-											className="border-line bg-surface text-fg w-full rounded-sm border px-2 py-1.5 text-sm"
+											className={TABLE_INPUT}
 											value={row.unit}
-											onChange={(e) =>
-												onPatch({
-													rows: updateRow(draft.rows, row._key, 'unit', e.target.value)
-												})
-											}
+											onChange={(e) => setRow(row._key, 'unit', e.target.value)}
 										>
 											{UNIT_OPTIONS.map((unit) => (
 												<option key={unit} value={unit}>
@@ -844,7 +961,13 @@ function RetailDraftEditor({
 			</div>
 
 			{showRemove && (
-				<Button variant="ghost" size="sm" onClick={onRemove} disabled={importing}>
+				<Button
+					variant="ghost"
+					size="sm"
+					className="h-11 w-full md:h-8 md:w-auto"
+					onClick={onRemove}
+					disabled={importing}
+				>
 					Remove this receipt from batch
 				</Button>
 			)}
@@ -862,24 +985,128 @@ function BankDraftEditor({
 	importing,
 	showRemove
 }) {
+	const setEntry = (key, field, value) =>
+		onPatch({ bankEntries: updateRow(draft.bankEntries, key, field, value) });
+
+	const setEntryType = (key, nextType) => {
+		onPatch({
+			bankEntries: draft.bankEntries.map((r) => {
+				if (r._key !== key) return r;
+				const next = { ...r, txn_type: nextType };
+				if (nextType === 'income') {
+					next.category_id =
+						r.category_id || (fallbackIncomeCategoryId ? String(fallbackIncomeCategoryId) : '');
+				} else {
+					next.category_id = '';
+				}
+				return next;
+			})
+		});
+	};
+
 	return (
-		<div className="space-y-4">
-			{previewUrl && (
-				<div className="bg-surface-2 flex justify-center rounded-md p-3">
-					<img
-						src={previewUrl}
-						alt="Scanned bank document"
-						className="max-h-40 w-auto max-w-full rounded-sm object-contain"
-					/>
-				</div>
-			)}
+		<div className="space-y-4 pb-1">
+			<div className="space-y-3">
+				<PreviewThumb
+					src={previewUrl}
+					alt="Scanned bank document"
+					className="mx-auto w-24 md:mx-0 md:w-auto"
+					imgClassName="max-h-24 md:max-h-40"
+				/>
+				<p className="text-muted text-sm">
+					Change type if the direction is wrong. Remove rows you do not want to import.
+				</p>
+			</div>
 
-			<p className="text-muted text-sm">
-				Review each row. Change type if the inferred direction is wrong. Remove rows you do not want
-				to import.
-			</p>
+			<ul className="space-y-3 md:hidden">
+				{draft.bankEntries.map((row, index) => (
+					<li key={row._key} className="border-line space-y-2.5 rounded-md border p-3">
+						<div className="flex items-end gap-2">
+							<div className="min-w-0 flex-1">
+								<Input
+									label={index === 0 ? 'Title' : `Row ${index + 1}`}
+									value={row.title}
+									autoComplete="off"
+									placeholder="Counterparty · ref · account"
+									onChange={(e) => setEntry(row._key, 'title', e.target.value)}
+								/>
+							</div>
+							<Button
+								variant="ghost"
+								size="icon"
+								className="mb-0.5 h-11 w-11 shrink-0"
+								onClick={() =>
+									onPatch({
+										bankEntries: draft.bankEntries.filter((r) => r._key !== row._key)
+									})
+								}
+								aria-label={`Remove ${row.title || 'entry'}`}
+							>
+								<Trash2 size={16} />
+							</Button>
+						</div>
+						<div className="grid grid-cols-2 gap-2">
+							<Select
+								label="Type"
+								value={row.txn_type}
+								onChange={(e) => setEntryType(row._key, e.target.value)}
+							>
+								{BANK_TXN_TYPES.map((opt) => (
+									<option key={opt.value} value={opt.value}>
+										{opt.label}
+									</option>
+								))}
+							</Select>
+							<Input
+								label="Amount"
+								type="number"
+								inputMode="decimal"
+								min="0"
+								step="0.01"
+								value={row.amount}
+								onChange={(e) => setEntry(row._key, 'amount', e.target.value)}
+							/>
+						</div>
+						<div className="grid grid-cols-2 gap-2">
+							<Input
+								label="Bank / app"
+								value={row.merchant}
+								autoComplete="off"
+								placeholder="Bank / app"
+								onChange={(e) => setEntry(row._key, 'merchant', e.target.value)}
+							/>
+							<Input
+								label="Date"
+								type="date"
+								value={row.date_effective || ''}
+								onChange={(e) => setEntry(row._key, 'date_effective', e.target.value)}
+							/>
+						</div>
+						{row.txn_type === 'income' ? (
+							<Select
+								label="Category"
+								value={row.category_id || ''}
+								onChange={(e) => setEntry(row._key, 'category_id', e.target.value)}
+							>
+								{incomeCategories.map((c) => (
+									<option key={c.id} value={c.id}>
+										{c.name}
+									</option>
+								))}
+							</Select>
+						) : null}
+						<Input
+							label="Note"
+							value={row.note}
+							autoComplete="off"
+							placeholder="Optional"
+							onChange={(e) => setEntry(row._key, 'note', e.target.value)}
+						/>
+					</li>
+				))}
+			</ul>
 
-			<div className="border-line overflow-x-auto rounded-md border">
+			<div className="border-line hidden overflow-x-auto rounded-md border md:block">
 				<table className="w-full min-w-[920px] table-fixed border-collapse text-sm">
 					<thead>
 						<tr className="bg-surface-2 border-line border-b">
@@ -910,25 +1137,9 @@ function BankDraftEditor({
 								<tr className="border-line align-top">
 									<td className="p-1">
 										<select
-											className="border-line bg-surface text-fg w-full rounded-sm border px-2 py-1.5 text-sm"
+											className={TABLE_INPUT}
 											value={row.txn_type}
-											onChange={(e) => {
-												const nextType = e.target.value;
-												onPatch({
-													bankEntries: draft.bankEntries.map((r) => {
-														if (r._key !== row._key) return r;
-														const next = { ...r, txn_type: nextType };
-														if (nextType === 'income') {
-															next.category_id =
-																r.category_id ||
-																(fallbackIncomeCategoryId ? String(fallbackIncomeCategoryId) : '');
-														} else {
-															next.category_id = '';
-														}
-														return next;
-													})
-												});
-											}}
+											onChange={(e) => setEntryType(row._key, e.target.value)}
 										>
 											{BANK_TXN_TYPES.map((opt) => (
 												<option key={opt.value} value={opt.value}>
@@ -939,35 +1150,17 @@ function BankDraftEditor({
 									</td>
 									<td className="p-1">
 										<input
-											className="border-line bg-surface text-fg w-full rounded-sm border px-2 py-1.5 text-sm"
+											className={TABLE_INPUT}
 											value={row.title}
-											onChange={(e) =>
-												onPatch({
-													bankEntries: updateRow(
-														draft.bankEntries,
-														row._key,
-														'title',
-														e.target.value
-													)
-												})
-											}
+											onChange={(e) => setEntry(row._key, 'title', e.target.value)}
 											placeholder="Counterparty · ref · account"
 										/>
 									</td>
 									<td className="p-1">
 										<input
-											className="border-line bg-surface text-fg w-full rounded-sm border px-2 py-1.5 text-sm"
+											className={TABLE_INPUT}
 											value={row.merchant}
-											onChange={(e) =>
-												onPatch({
-													bankEntries: updateRow(
-														draft.bankEntries,
-														row._key,
-														'merchant',
-														e.target.value
-													)
-												})
-											}
+											onChange={(e) => setEntry(row._key, 'merchant', e.target.value)}
 											placeholder="Bank / app"
 										/>
 									</td>
@@ -976,52 +1169,25 @@ function BankDraftEditor({
 											type="number"
 											min="0"
 											step="0.01"
-											className="border-line bg-surface text-fg w-full rounded-sm border px-2 py-1.5 text-right text-sm tabular-nums"
+											className={`${TABLE_INPUT} text-right tabular-nums`}
 											value={row.amount}
-											onChange={(e) =>
-												onPatch({
-													bankEntries: updateRow(
-														draft.bankEntries,
-														row._key,
-														'amount',
-														e.target.value
-													)
-												})
-											}
+											onChange={(e) => setEntry(row._key, 'amount', e.target.value)}
 										/>
 									</td>
 									<td className="p-1">
 										<input
 											type="date"
-											className="border-line bg-surface text-fg w-full rounded-sm border px-2 py-1.5 text-sm"
+											className={TABLE_INPUT}
 											value={row.date_effective || ''}
-											onChange={(e) =>
-												onPatch({
-													bankEntries: updateRow(
-														draft.bankEntries,
-														row._key,
-														'date_effective',
-														e.target.value
-													)
-												})
-											}
+											onChange={(e) => setEntry(row._key, 'date_effective', e.target.value)}
 										/>
 									</td>
 									<td className="p-1">
 										{row.txn_type === 'income' ? (
 											<select
-												className="border-line bg-surface text-fg w-full rounded-sm border px-2 py-1.5 text-sm"
+												className={TABLE_INPUT}
 												value={row.category_id || ''}
-												onChange={(e) =>
-													onPatch({
-														bankEntries: updateRow(
-															draft.bankEntries,
-															row._key,
-															'category_id',
-															e.target.value
-														)
-													})
-												}
+												onChange={(e) => setEntry(row._key, 'category_id', e.target.value)}
 											>
 												{incomeCategories.map((c) => (
 													<option key={c.id} value={c.id}>
@@ -1052,18 +1218,9 @@ function BankDraftEditor({
 								<tr className="border-line border-b last:border-b-0">
 									<td colSpan={7} className="px-1 pb-2">
 										<input
-											className="border-line bg-surface text-fg w-full rounded-sm border px-2 py-1.5 text-sm"
+											className={TABLE_INPUT}
 											value={row.note}
-											onChange={(e) =>
-												onPatch({
-													bankEntries: updateRow(
-														draft.bankEntries,
-														row._key,
-														'note',
-														e.target.value
-													)
-												})
-											}
+											onChange={(e) => setEntry(row._key, 'note', e.target.value)}
 											placeholder="Note / purpose (optional)"
 										/>
 									</td>
@@ -1075,7 +1232,13 @@ function BankDraftEditor({
 			</div>
 
 			{showRemove && (
-				<Button variant="ghost" size="sm" onClick={onRemove} disabled={importing}>
+				<Button
+					variant="ghost"
+					size="sm"
+					className="h-11 w-full md:h-8 md:w-auto"
+					onClick={onRemove}
+					disabled={importing}
+				>
 					Remove this slip from batch
 				</Button>
 			)}

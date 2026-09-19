@@ -5,6 +5,7 @@ import { FolderTree, Plus, Trash2 } from 'lucide-react';
 import { categoriesApi } from '../lib/resources';
 import { reassignAndDeleteCategory } from '../lib/receiptScan';
 import { toast } from '../stores/toastStore';
+import { useIsProfileOwner } from '../stores/profileStore';
 import { PageHeader } from '../components/layout/PageHeader';
 import {
 	Button,
@@ -27,6 +28,7 @@ function buildTree(categories) {
 
 export default function CategoriesPage() {
 	const queryClient = useQueryClient();
+	const isOwner = useIsProfileOwner();
 	const [kind, setKind] = useState('expense');
 	const [newName, setNewName] = useState('');
 	const [parentId, setParentId] = useState('');
@@ -110,34 +112,41 @@ export default function CategoriesPage() {
 				))}
 			</div>
 
-			<Card className="mb-4">
-				<CardHeader title="Add category" />
-				<CardBody className="flex flex-col gap-3 sm:flex-row sm:items-end">
-					<Input
-						label="Name"
-						value={newName}
-						onChange={(e) => setNewName(e.target.value)}
-						placeholder="e.g. Groceries"
-						className="flex-1"
-					/>
-					<Select
-						label="Parent (optional)"
-						value={parentId}
-						onChange={(e) => setParentId(e.target.value)}
-						className="sm:w-48"
-					>
-						<option value="">None (root)</option>
-						{roots.map((r) => (
-							<option key={r.id} value={r.id}>
-								{r.name}
-							</option>
-						))}
-					</Select>
-					<Button onClick={addCategory} loading={createCat.isPending}>
-						<Plus size={16} /> Add
-					</Button>
-				</CardBody>
-			</Card>
+			{isOwner && (
+				<Card className="mb-4">
+					<CardHeader title="Add category" />
+					<CardBody className="flex flex-col gap-3 sm:flex-row sm:items-end">
+						<Input
+							label="Name"
+							value={newName}
+							onChange={(e) => setNewName(e.target.value)}
+							placeholder="e.g. Groceries"
+							className="flex-1"
+						/>
+						<Select
+							label="Parent (optional)"
+							value={parentId}
+							onChange={(e) => setParentId(e.target.value)}
+							className="sm:w-48"
+						>
+							<option value="">None (root)</option>
+							{roots.map((r) => (
+								<option key={r.id} value={r.id}>
+									{r.name}
+								</option>
+							))}
+						</Select>
+						<Button onClick={addCategory} loading={createCat.isPending}>
+							<Plus size={16} /> Add
+						</Button>
+					</CardBody>
+				</Card>
+			)}
+			{!isOwner && (
+				<p className="text-muted mb-4 text-sm">
+					Only the profile owner can add or remove categories.
+				</p>
+			)}
 
 			{isLoading ? (
 				<LoadingScreen />
@@ -166,32 +175,36 @@ export default function CategoriesPage() {
 											{root.children.map((child) => (
 												<li key={child.id} className="flex items-center justify-between gap-2 pl-3">
 													<span>↳ {child.name}</span>
-													<button
-														type="button"
-														className="text-danger cursor-pointer hover:underline"
-														onClick={() => {
-															setDeleteTarget(child);
-															setReassignTo('');
-														}}
-													>
-														<Trash2 size={14} />
-													</button>
+													{isOwner && (
+														<button
+															type="button"
+															className="text-danger cursor-pointer hover:underline"
+															onClick={() => {
+																setDeleteTarget(child);
+																setReassignTo('');
+															}}
+														>
+															<Trash2 size={14} />
+														</button>
+													)}
 												</li>
 											))}
 										</ul>
 									)}
 								</div>
-								<Button
-									variant="ghost"
-									size="icon"
-									aria-label={`Delete ${root.name}`}
-									onClick={() => {
-										setDeleteTarget(root);
-										setReassignTo('');
-									}}
-								>
-									<Trash2 size={16} />
-								</Button>
+								{isOwner && (
+									<Button
+										variant="ghost"
+										size="icon"
+										aria-label={`Delete ${root.name}`}
+										onClick={() => {
+											setDeleteTarget(root);
+											setReassignTo('');
+										}}
+									>
+										<Trash2 size={16} />
+									</Button>
+								)}
 							</CardBody>
 						</Card>
 					))}

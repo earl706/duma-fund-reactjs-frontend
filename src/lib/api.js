@@ -1,6 +1,7 @@
 import axios from 'axios';
 
 import { isMobileApp } from './desktop';
+import { isProfileScopedFinanceUrl, readStoredProfileId } from './profileScope';
 
 const ACCESS_KEY = isMobileApp() ? 'dumafund.mobile.access' : 'dumafund.access';
 const REFRESH_KEY = isMobileApp() ? 'dumafund.mobile.refresh' : 'dumafund.refresh';
@@ -29,7 +30,15 @@ function cookieClear(name) {
 	document.cookie = `${name}=; path=/; max-age=0; SameSite=Lax`;
 }
 
-function readToken(key) {
+const memoryTokens = {};
+
+function syncAuthHeader() {
+	const access = memoryTokens[ACCESS_KEY] || readPersistedToken(ACCESS_KEY);
+	if (access) api.defaults.headers.common.Authorization = `Bearer ${access}`;
+	else delete api.defaults.headers.common.Authorization;
+}
+
+function readPersistedToken(key) {
 	try {
 		const fromStorage = localStorage.getItem(key);
 		if (fromStorage) return fromStorage;
@@ -47,7 +56,12 @@ function readToken(key) {
 	return fromCookie;
 }
 
+function readToken(key) {
+	return memoryTokens[key] || readPersistedToken(key);
+}
+
 function writeToken(key, value) {
+	memoryTokens[key] = value;
 	try {
 		localStorage.setItem(key, value);
 	} catch {
@@ -57,6 +71,7 @@ function writeToken(key, value) {
 }
 
 function removeToken(key) {
+	delete memoryTokens[key];
 	try {
 		localStorage.removeItem(key);
 	} catch {
@@ -75,14 +90,17 @@ export const tokenStore = {
 	set({ access, refresh }) {
 		if (access) writeToken(ACCESS_KEY, access);
 		if (refresh) writeToken(REFRESH_KEY, refresh);
+		syncAuthHeader();
 	},
 	clear() {
 		removeToken(ACCESS_KEY);
 		removeToken(REFRESH_KEY);
+		syncAuthHeader();
 	}
 };
 
 export const api = axios.create({ baseURL });
+syncAuthHeader();
 
 export function getApiBaseURL() {
 	return api.defaults.baseURL || baseURL;
@@ -91,6 +109,12 @@ export function getApiBaseURL() {
 api.interceptors.request.use((config) => {
 	const token = tokenStore.access;
 	if (token) config.headers.Authorization = `Bearer ${token}`;
+	if (isProfileScopedFinanceUrl(config.url)) {
+		const profileId = readStoredProfileId();
+		if (profileId != null) {
+			config.headers['X-Budget-Profile-Id'] = String(profileId);
+		}
+	}
 	return config;
 });
 
@@ -144,7 +168,10 @@ api.interceptors.response.use(
 			} catch (refreshError) {
 				refreshPromise = null;
 				tokenStore.clear();
-				if (typeof window !== 'undefined') window.location.assign('/login');
+				if (typeof window !== 'undefined') {
+					window.dispatchEvent(new Event('dumafund:auth-expired'));
+					if (!isMobileApp()) window.location.assign('/login');
+				}
 				return Promise.reject(refreshError);
 			}
 		}

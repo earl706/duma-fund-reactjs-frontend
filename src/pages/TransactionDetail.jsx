@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, ArrowLeftRight, ImageDown, Plus, ScanLine } from 'lucide-react';
 
 import { categoriesApi, transactionItemsApi, transactionsApi } from '../lib/resources';
+import { post } from '../lib/api';
 import { fetchAllPages } from '../lib/fetchAll';
 import { isMobileApp } from '../lib/desktop';
 import { mediaUrl } from '../lib/receiptScan';
@@ -19,6 +20,7 @@ import {
 	shareImageFile
 } from '../lib/groceryReceipt';
 import { toast } from '../stores/toastStore';
+import { useActiveProfileId, useCanEditLedger } from '../stores/profileStore';
 import { useListControls } from '../hooks/useListControls';
 import { GroceryExportModal } from '../components/costs/GroceryExportModal';
 import { ReceiptImportModal } from '../components/finance/ReceiptImportModal';
@@ -89,6 +91,8 @@ export default function TransactionDetailPage() {
 	const navigate = useNavigate();
 	const queryClient = useQueryClient();
 	const mobile = isMobileApp();
+	const canEdit = useCanEditLedger();
+	const profileId = useActiveProfileId();
 	const txnId = id ? Number(id) : null;
 
 	const { data: txn, isLoading: txnLoading, isError: txnError } = transactionsApi.useDetail(txnId);
@@ -146,7 +150,7 @@ export default function TransactionDetailPage() {
 		isLoading,
 		isError
 	} = useQuery({
-		queryKey: ['finance-transaction-items', txnId, 'all', listParams],
+		queryKey: ['finance-transaction-items', txnId, 'all', profileId, listParams],
 		queryFn: () => fetchAllPages(`/finance/transactions/${txnId}/items/`, listParams),
 		enabled: txnId != null && txn?.type === 'expense'
 	});
@@ -168,6 +172,7 @@ export default function TransactionDetailPage() {
 	const [canShare, setCanShare] = useState(false);
 	const [sharing, setSharing] = useState(false);
 	const [bulkDeleting, setBulkDeleting] = useState(false);
+	const [duplicating, setDuplicating] = useState(false);
 
 	useEffect(() => {
 		return () => {
@@ -213,6 +218,36 @@ export default function TransactionDetailPage() {
 			unit: 'pcs',
 			date_created: todayISO()
 		});
+	};
+
+	const duplicateItem = async (row) => {
+		if (duplicating || !isExpense || !txnId || !row?.id) return;
+		setDuplicating(true);
+		try {
+			const created = await post(`/finance/transactions/${txnId}/items/`, {
+				title: row.title || '',
+				status: row.status || 'active',
+				cost: row.cost ?? '0.00',
+				quantity: row.quantity ?? '1.00',
+				unit: row.unit || 'pcs',
+				date_created: todayISO()
+			});
+			toast.success('Item duplicated.');
+			queryClient.invalidateQueries({ queryKey: ['finance-transaction-items'] });
+			queryClient.invalidateQueries({ queryKey: ['finance-transactions'] });
+			queryClient.invalidateQueries({ queryKey: ['finance-balance'] });
+			if (created?.id != null) {
+				setAutoEdit({
+					id: created.id,
+					field: 'title',
+					key: `${created.id}-${Date.now()}`
+				});
+			}
+		} catch {
+			toast.error('Could not duplicate item.');
+		} finally {
+			setDuplicating(false);
+		}
 	};
 
 	const commitCell = ({ id: itemId, field, value, patch }) => {
@@ -290,8 +325,8 @@ export default function TransactionDetailPage() {
 				key: 'actions',
 				label: '',
 				type: 'actions',
-				actions: ['info', 'delete'],
-				className: 'w-[4.5rem]'
+				actions: ['info', 'duplicate', 'delete'],
+				className: 'w-[6.75rem]'
 			}
 		],
 		[]
@@ -356,7 +391,7 @@ export default function TransactionDetailPage() {
 				actions={
 					isExpense ? (
 						<div className="flex flex-wrap gap-2">
-							{!mobile && (
+							{canEdit && !mobile && (
 								<Button variant="secondary" onClick={() => setScanOpen(true)}>
 									<ScanLine size={16} /> Scan receipt
 								</Button>
@@ -369,9 +404,11 @@ export default function TransactionDetailPage() {
 							>
 								<ImageDown size={16} /> Export image
 							</Button>
-							<Button onClick={addItem} loading={createItem.isPending}>
-								<Plus size={16} /> Add item
-							</Button>
+							{canEdit && (
+								<Button onClick={addItem} loading={createItem.isPending}>
+									<Plus size={16} /> Add item
+								</Button>
+							)}
 						</div>
 					) : null
 				}
@@ -402,7 +439,7 @@ export default function TransactionDetailPage() {
 						value={displayCategoryIds}
 						primaryId={displayPrimary}
 						max={MAX_EXPENSE_CATEGORIES}
-						disabled={updateTxn.isPending}
+						disabled={!canEdit || updateTxn.isPending}
 						onChange={({ ids, primaryId }) => {
 							setCategoryDraftIds(ids);
 							setCategoryDraftPrimary(primaryId);
@@ -463,13 +500,15 @@ export default function TransactionDetailPage() {
 							rows={items}
 							columns={columns}
 							onCommit={commitCell}
-							onAdd={addItem}
-							onRequestDelete={setDeleteTarget}
+							onAdd={canEdit ? addItem : undefined}
+							onRequestDelete={canEdit ? setDeleteTarget : undefined}
+							onRequestDuplicate={canEdit ? duplicateItem : undefined}
 							onRequestInfo={setInfoTarget}
-							onBulkDelete={setBulkDeleteIds}
-							selectable
-							adding={createItem.isPending}
-							saving={updateItem.isPending || updateTxn.isPending}
+							onBulkDelete={canEdit ? setBulkDeleteIds : undefined}
+							selectable={canEdit}
+							readOnly={!canEdit}
+							adding={createItem.isPending || duplicating}
+							saving={updateItem.isPending || updateTxn.isPending || duplicating}
 							autoEdit={autoEdit}
 							addLabel="Add item"
 							emptyMessage="No line items. Add rows or scan a receipt."

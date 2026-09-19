@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 
 import { isMobileApp } from '../../lib/desktop';
+import { cn } from '../../lib/format';
 import { isConvexQuad } from '../../lib/cropImage';
 
 const MIN_SIDE = 24;
-const HANDLE_HIT = 14;
+const HANDLE_HIT = 20;
 const NARROW_MQ = '(max-width: 767px)';
 const PAD_FRACTION = 0.08;
 
@@ -120,7 +121,8 @@ function measureContainedLayout(stage, img, naturalW, naturalH) {
 export function ReceiptCropper({
 	imageSrc,
 	onCropPixelsChange,
-	initialCorners: initialCornersProp = null
+	initialCorners: initialCornersProp = null,
+	className
 }) {
 	const stageRef = useRef(null);
 	const imgRef = useRef(null);
@@ -295,7 +297,10 @@ export function ReceiptCropper({
 	return (
 		<div
 			ref={stageRef}
-			className="bg-surface-2 relative h-[min(52vh,28rem)] touch-none overflow-hidden rounded-md select-none"
+			className={cn(
+				'bg-surface-2 relative touch-none overflow-hidden rounded-md select-none',
+				className || 'h-[min(52vh,28rem)]'
+			)}
 		>
 			<img
 				ref={imgRef}
@@ -340,10 +345,10 @@ export function ReceiptCropper({
 						return (
 							<rect
 								key={edge.id}
-								x={p.x - 6}
-								y={p.y - 6}
-								width={12}
-								height={12}
+								x={p.x - 8}
+								y={p.y - 8}
+								width={16}
+								height={16}
 								rx={2}
 								className="fill-primary cursor-move"
 								style={{ touchAction: 'none' }}

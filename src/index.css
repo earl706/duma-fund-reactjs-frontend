@@ -94,10 +94,50 @@ body {
   }
 }
 
-/* Thin, theme-aware scrollbars. */
-* {
+/* Thin, theme-aware scrollbars on web and desktop. */
+html:not(.mobile-app) * {
   scrollbar-width: thin;
   scrollbar-color: var(--line) transparent;
+}
+
+/* iOS WKWebView: no overlay strip; content still scrolls. */
+html.mobile-app,
+html.mobile-app * {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+html.mobile-app *::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+/* iOS zooms focused fields smaller than 16px (Tailwind text-sm is 14px). */
+html.mobile-app {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+html.mobile-app :is(input, textarea, select) {
+  font-size: 16px;
+}
+
+/* Interpolate blur(0) → blur so mid-swipe pages ease instead of popping. */
+.home-pager-pane {
+  -webkit-filter: blur(0);
+  filter: blur(0);
+  opacity: 1;
+  transition:
+    filter 240ms ease-out,
+    -webkit-filter 240ms ease-out,
+    opacity 240ms ease-out;
+}
+
+.home-pager-pane.is-swiping {
+  -webkit-filter: blur(10px);
+  filter: blur(10px);
+  opacity: 0.55;
 }
 
 :focus-visible {

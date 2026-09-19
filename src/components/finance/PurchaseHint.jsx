@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { cn, formatCost } from '../../lib/format';
 import { usePurchaseActions, usePurchaseLookup } from '../../lib/purchases';
 import { toast } from '../../stores/toastStore';
+import { useIsProfileOwner } from '../../stores/profileStore';
 import { Button } from '../ui';
 
 function statusLabel(status) {
@@ -24,6 +25,7 @@ function formatMoney(value) {
 export function PurchaseHint({ query, onInteractStart, className = '' }) {
 	const { data, isFetching } = usePurchaseLookup(query);
 	const { markRegular, exclude } = usePurchaseActions();
+	const isOwner = useIsProfileOwner();
 	const matches = data?.matches || [];
 
 	if (!(query || '').trim() || (query || '').trim().length < 2) return null;
@@ -63,6 +65,58 @@ export function PurchaseHint({ query, onInteractStart, className = '' }) {
 		});
 	};
 
+	const extraCount = matches.length > 1 ? matches.length - 1 : 0;
+	const summary = [
+		`Last ${formatMoney(primary.typical_price)}`,
+		`qty ${primary.typical_qty ?? '—'}`,
+		primary.last_merchant || 'Unknown',
+		primary.days_since_last != null ? `${primary.days_since_last}d ago` : primary.last_purchased_at
+	]
+		.filter(Boolean)
+		.join(' · ');
+
+	const extraDetail = (
+		<>
+			<p className="text-muted mt-0.5 leading-relaxed">
+				Avg {formatMoney(primary.avg_price)} · {primary.purchase_count} buys
+				{primary.usual_interval_days != null
+					? ` · ~${Math.round(primary.usual_interval_days)}d apart`
+					: ''}
+			</p>
+			{primary.recent?.length > 0 && (
+				<ul className="text-muted border-line/60 mt-1.5 space-y-0.5 border-t pt-1.5">
+					{primary.recent.map((r, i) => (
+						<li key={`${r.transaction_id}-${i}`}>
+							{r.date_effective}: {formatMoney(r.cost)} × {r.quantity} {r.unit} @ {r.merchant}
+							{r.transaction_id ? (
+								<>
+									{' '}
+									<Link
+										to={`/transactions/${r.transaction_id}`}
+										className="text-primary hover:underline"
+										onMouseDown={onInteractStart}
+									>
+										view
+									</Link>
+								</>
+							) : null}
+						</li>
+					))}
+				</ul>
+			)}
+			{primary.related?.length > 0 && (
+				<p className="text-muted mt-1.5">
+					Related: {primary.related.map((r) => r.display_title).join(', ')}
+				</p>
+			)}
+			{extraCount > 0 && (
+				<p className="text-muted mt-1.5">
+					+{extraCount} other match{extraCount > 1 ? 'es' : ''}
+				</p>
+			)}
+		</>
+	);
+
 	return (
 		<div
 			className={cn(
@@ -70,12 +124,12 @@ export function PurchaseHint({ query, onInteractStart, className = '' }) {
 				className || 'max-w-md'
 			)}
 			onMouseDown={(e) => {
-				e.preventDefault();
 				onInteractStart?.();
+				if (onInteractStart) e.preventDefault();
 			}}
 		>
-			<div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
-				<div className="min-w-0 flex-1">
+			<div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between md:gap-4">
+				<div className="w-full min-w-0 md:flex-1">
 					<div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
 						<span className="text-fg font-semibold">{primary.display_title}</span>
 						<span className="text-muted">{statusLabel(primary.status)}</span>
@@ -83,71 +137,42 @@ export function PurchaseHint({ query, onInteractStart, className = '' }) {
 							<span className="text-muted">· related size/pack</span>
 						)}
 					</div>
-					<p className="text-muted mt-1 leading-relaxed">
-						Last: {formatMoney(primary.typical_price)} · qty {primary.typical_qty ?? '—'} ·{' '}
-						{primary.last_merchant || 'Unknown'} · {primary.last_purchased_at || '—'}
-						{primary.days_since_last != null ? ` (${primary.days_since_last}d ago)` : ''}
-					</p>
-					<p className="text-muted mt-0.5 leading-relaxed">
-						Avg {formatMoney(primary.avg_price)} · {primary.purchase_count} buys
-						{primary.usual_interval_days != null
-							? ` · ~${Math.round(primary.usual_interval_days)}d apart`
-							: ''}
-					</p>
-					{primary.recent?.length > 0 && (
-						<ul className="text-muted border-line/60 mt-1.5 space-y-0.5 border-t pt-1.5">
-							{primary.recent.map((r, i) => (
-								<li key={`${r.transaction_id}-${i}`}>
-									{r.date_effective}: {formatMoney(r.cost)} × {r.quantity} {r.unit} @ {r.merchant}
-									{r.transaction_id ? (
-										<>
-											{' '}
-											<Link
-												to={`/transactions/${r.transaction_id}`}
-												className="text-primary hover:underline"
-												onMouseDown={onInteractStart}
-											>
-												view
-											</Link>
-										</>
-									) : null}
-								</li>
-							))}
-						</ul>
-					)}
-					{primary.related?.length > 0 && (
-						<p className="text-muted mt-1.5">
-							Related: {primary.related.map((r) => r.display_title).join(', ')}
-						</p>
-					)}
-					{matches.length > 1 && (
-						<p className="text-muted mt-1.5">
-							+{matches.length - 1} other match{matches.length > 2 ? 'es' : ''}
-						</p>
-					)}
+					<p className="text-muted mt-1 leading-snug md:hidden">{summary}</p>
+					<div className="hidden md:block">
+						<p className="text-muted mt-1 leading-relaxed">{summary}</p>
+						{extraDetail}
+					</div>
+					<details className="mt-1 md:hidden">
+						<summary className="text-primary cursor-pointer font-medium">History</summary>
+						<div className="pt-1">{extraDetail}</div>
+					</details>
 				</div>
-				<div className="flex shrink-0 flex-wrap gap-1.5">
-					<Button
-						variant="secondary"
-						size="sm"
-						type="button"
-						onClick={() => handleExclude(primary.display_title)}
-						disabled={exclude.isPending}
-					>
-						Not the same product
-					</Button>
-					{primary.status !== 'regular' && (
+				{isOwner && (
+					<div className="flex w-full flex-col gap-1.5 sm:flex-row md:w-auto md:shrink-0 md:flex-col">
 						<Button
 							variant="secondary"
 							size="sm"
 							type="button"
-							onClick={() => handleMarkRegular(primary.display_title)}
-							disabled={markRegular.isPending}
+							className="h-9 w-full justify-center md:w-auto"
+							onClick={() => handleExclude(primary.display_title)}
+							disabled={exclude.isPending}
 						>
-							Mark as regular
+							Not the same product
 						</Button>
-					)}
-				</div>
+						{primary.status !== 'regular' && (
+							<Button
+								variant="secondary"
+								size="sm"
+								type="button"
+								className="h-9 w-full justify-center md:w-auto"
+								onClick={() => handleMarkRegular(primary.display_title)}
+								disabled={markRegular.isPending}
+							>
+								Mark as regular
+							</Button>
+						)}
+					</div>
+				)}
 			</div>
 		</div>
 	);

@@ -4,6 +4,7 @@ import {
 	isToday,
 	isTomorrow,
 	isValid,
+	isYesterday,
 	parse,
 	parseISO
 } from 'date-fns';
@@ -48,6 +49,15 @@ export function formatDue(value) {
 	const date = typeof value === 'string' ? parseISO(value) : value;
 	if (isToday(date)) return `Today, ${format(date, 'h:mma')}`;
 	if (isTomorrow(date)) return `Tomorrow, ${format(date, 'h:mma')}`;
+	return format(date, 'MMM d');
+}
+
+/** Ledger row date: Today / Yesterday / MMM d. */
+export function formatActivityDate(value) {
+	if (!value) return '';
+	const date = typeof value === 'string' ? parseISO(value) : value;
+	if (isToday(date)) return 'Today';
+	if (isYesterday(date)) return 'Yesterday';
 	return format(date, 'MMM d');
 }
 

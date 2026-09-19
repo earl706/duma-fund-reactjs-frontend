@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 
 import { createNestedResourceHooks, createResourceHooks } from '../hooks/useResource';
+import { useActiveProfileId } from '../stores/profileStore';
 import { get, patch } from './api';
 
 export const categoriesApi = createResourceHooks('finance-categories', '/finance/categories/');
@@ -17,26 +18,35 @@ export const transactionItemsApi = createNestedResourceHooks(
 );
 
 export function useFinanceBalance(options = {}) {
+	const profileId = useActiveProfileId();
+	const { enabled, ...rest } = options;
 	return useQuery({
-		queryKey: ['finance-balance'],
+		queryKey: ['finance-balance', profileId],
 		queryFn: () => get('/finance/balance/'),
-		...options
+		enabled: profileId != null && enabled !== false,
+		...rest
 	});
 }
 
 export function useFinanceAnalytics(params = {}, options = {}) {
+	const profileId = useActiveProfileId();
+	const { enabled, ...rest } = options;
 	return useQuery({
-		queryKey: ['finance-analytics', params],
+		queryKey: ['finance-analytics', profileId, params],
 		queryFn: () => get('/finance/analytics/', { params }),
-		...options
+		enabled: profileId != null && enabled !== false,
+		...rest
 	});
 }
 
 export function useFinanceBreakdown(params = {}, options = {}) {
+	const profileId = useActiveProfileId();
+	const { enabled, ...rest } = options;
 	return useQuery({
-		queryKey: ['finance-analytics-breakdown', params],
+		queryKey: ['finance-analytics-breakdown', profileId, params],
 		queryFn: () => get('/finance/analytics/breakdown/', { params }),
-		...options
+		enabled: profileId != null && enabled !== false,
+		...rest
 	});
 }
 

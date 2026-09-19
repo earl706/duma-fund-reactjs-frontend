@@ -1,49 +1,29 @@
 import { useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
-import { LayoutDashboard, ScanLine } from 'lucide-react';
-import { Cell, Legend, Pie, PieChart, ResponsiveContainer, Tooltip } from 'recharts';
-import { format, parseISO } from 'date-fns';
+import { format, parseISO, subDays } from 'date-fns';
 import { useQueryClient } from '@tanstack/react-query';
 
 import { isMobileApp } from '../lib/desktop';
 import { useAuthStore } from '../stores/authStore';
-import { categoriesApi, useFinanceBalance, useFinanceBreakdown } from '../lib/resources';
-import { usePurchaseInsights } from '../lib/purchases';
-import { formatCost } from '../lib/format';
-import { ReceiptImportModal } from '../components/finance/ReceiptImportModal';
-import { PageHeader } from '../components/layout/PageHeader';
+import { useCanEditLedger } from '../stores/profileStore';
 import {
-	Button,
-	Card,
-	CardBody,
-	CardHeader,
-	EmptyState,
-	LoadingScreen,
-	StatCard
-} from '../components/ui';
+	categoriesApi,
+	transactionsApi,
+	useFinanceAnalytics,
+	useFinanceBalance,
+	useFinanceBreakdown
+} from '../lib/resources';
+import { ReceiptImportModal } from '../components/finance/ReceiptImportModal';
+import { DashboardHome } from '../components/finance/DashboardHome';
 
-const PERIODS = [
-	{ value: 'day', label: 'This day' },
-	{ value: 'week', label: 'This week' },
-	{ value: 'month', label: 'This month' }
-];
-
-const CATEGORY_COLORS = [
-	'var(--primary)',
-	'var(--accent)',
-	'#c4a35a',
-	'#8a8f98',
-	'#a67c52',
-	'#d17c83'
-];
-
-const BALANCE_COLORS = {
-	starting_balance: 'var(--primary)',
-	spent: 'var(--accent)'
-};
+function greeting() {
+	const hour = new Date().getHours();
+	if (hour < 12) return 'Good morning';
+	if (hour < 18) return 'Good afternoon';
+	return 'Good evening';
+}
 
 function formatRangeLabel(start, end) {
-	if (!start || !end) return '';
+	if (!start || !end) return 'This period';
 	const s = typeof start === 'string' ? parseISO(start) : start;
 	const e = typeof end === 'string' ? parseISO(end) : end;
 	if (format(s, 'yyyy-MM-dd') === format(e, 'yyyy-MM-dd')) {
@@ -52,86 +32,33 @@ function formatRangeLabel(start, end) {
 	return `${format(s, 'MMM d')} – ${format(e, 'MMM d, yyyy')}`;
 }
 
-function greeting() {
-	const hour = new Date().getHours();
-	if (hour < 12) return 'Good morning';
-	if (hour < 18) return 'Good afternoon';
-	return 'Good evening asdadasd';
+function chartWindow(period, start, end) {
+	if (!start || !end) return null;
+	if (period === 'day') {
+		return {
+			grain: 'day',
+			start: format(subDays(parseISO(end), 6), 'yyyy-MM-dd'),
+			end,
+			include_archived: '0'
+		};
+	}
+	return { grain: 'day', start, end, include_archived: '0' };
 }
 
-function CompactPie({ title, data, colors, emptyLabel }) {
-	const total = data.reduce((sum, row) => sum + Number(row.value || 0), 0);
-	if (!data.length || total <= 0) {
-		return (
-			<div className="flex min-h-[220px] flex-col">
-				<h3 className="text-fg mb-2 text-sm font-semibold">{title}</h3>
-				<p className="text-muted flex flex-1 items-center justify-center text-sm">{emptyLabel}</p>
-			</div>
-		);
-	}
-
-	return (
-		<div className="flex min-h-[220px] flex-col">
-			<h3 className="text-fg mb-1 text-sm font-semibold">{title}</h3>
-			<p className="text-muted mb-2 text-xs">Total {formatCost(total)}</p>
-			<div className="h-[200px] w-full">
-				<ResponsiveContainer width="100%" height="100%">
-					<PieChart>
-						<Pie
-							data={data}
-							dataKey="value"
-							nameKey="name"
-							cx="50%"
-							cy="42%"
-							innerRadius={42}
-							outerRadius={68}
-							paddingAngle={1}
-							stroke="var(--surface)"
-							strokeWidth={1}
-						>
-							{data.map((entry, index) => (
-								<Cell
-									key={entry.name}
-									fill={
-										typeof colors === 'function'
-											? colors(entry, index)
-											: colors[index % colors.length]
-									}
-								/>
-							))}
-						</Pie>
-						<Tooltip
-							contentStyle={{
-								background: 'var(--surface)',
-								border: '1px solid var(--line)',
-								borderRadius: 8,
-								color: 'var(--fg)',
-								fontSize: 12
-							}}
-							formatter={(value, name) => [formatCost(value), name]}
-						/>
-						<Legend
-							verticalAlign="bottom"
-							align="center"
-							iconType="circle"
-							iconSize={8}
-							wrapperStyle={{ fontSize: 11, color: 'var(--muted)', paddingTop: 4 }}
-							formatter={(value) => <span className="text-muted text-[11px]">{value}</span>}
-						/>
-					</PieChart>
-				</ResponsiveContainer>
-			</div>
-		</div>
-	);
+function rowMatchesChip(row, chipId) {
+	if (chipId == null) return true;
+	const ids = row.categories?.length ? row.categories : row.category != null ? [row.category] : [];
+	return ids.map(Number).includes(Number(chipId));
 }
 
 export default function DashboardPage() {
 	const queryClient = useQueryClient();
 	const user = useAuthStore((s) => s.user);
 	const mobile = isMobileApp();
+	const canEdit = useCanEditLedger();
 	const name = user?.full_name?.split(' ')[0] || 'there';
 	const [period, setPeriod] = useState('week');
-	const [includeArchived, setIncludeArchived] = useState(false);
+	const [selectedChip, setSelectedChip] = useState(null);
 	const [scanOpen, setScanOpen] = useState(false);
 
 	const { data: balance } = useFinanceBalance();
@@ -140,133 +67,98 @@ export default function DashboardPage() {
 	const expenseCategories = categoriesData?.results || [];
 	const incomeCategories = incomeCatsData?.results || [];
 
-	const { data, isLoading, isError } = useFinanceBreakdown({
+	const {
+		data,
+		isLoading: breakdownLoading,
+		isError: breakdownError
+	} = useFinanceBreakdown({
 		period,
-		include_archived: includeArchived ? '1' : '0'
+		include_archived: '0'
 	});
 
-	const { data: purchaseInsights } = usePurchaseInsights();
+	const analyticsParams = useMemo(
+		() => chartWindow(period, data?.start, data?.end),
+		[period, data?.start, data?.end]
+	);
 
-	const dashboardPurchaseRows = useMemo(() => {
-		if (!purchaseInsights) return [];
-		const due = (purchaseInsights.due_soon || []).slice(0, 2).map((row) => ({
-			...row,
-			_kind: 'due'
-		}));
-		const lapsed = (purchaseInsights.lapsed || []).slice(0, 2).map((row) => ({
-			...row,
-			_kind: 'lapsed'
-		}));
-		const seen = new Set([...due, ...lapsed].map((r) => r.normalized_title));
-		const regular = (purchaseInsights.regular || [])
-			.filter((row) => !seen.has(row.normalized_title))
-			.slice(0, 3)
-			.map((row) => ({ ...row, _kind: 'regular' }));
-		return [...due, ...lapsed, ...regular];
-	}, [purchaseInsights]);
+	const { data: series, isLoading: chartLoading } = useFinanceAnalytics(analyticsParams || {}, {
+		enabled: analyticsParams != null
+	});
 
-	const categoryPieData = useMemo(
-		() =>
-			(data?.categories || [])
-				.map((row) => ({
-					name: row.name,
-					value: Number(row.amount || 0)
-				}))
-				.filter((row) => row.value > 0),
+	const { data: txnPage, isLoading: recentLoading } = transactionsApi.useList({
+		ordering: '-date_effective',
+		status: 'active',
+		page_size: 50
+	});
+
+	const chips = useMemo(
+		() => (data?.categories || []).filter((row) => row.id != null && Number(row.amount) > 0),
 		[data]
 	);
 
-	const balancePieData = useMemo(() => {
-		const starting = Number(data?.balance_composition?.starting_balance || 0);
-		const spent = Number(data?.balance_composition?.spent || 0);
-		const slices = [];
-		if (starting > 0) slices.push({ name: 'Starting', value: starting, key: 'starting_balance' });
-		if (spent > 0) slices.push({ name: 'Spent', value: spent, key: 'spent' });
-		return slices;
+	const recent = useMemo(() => {
+		const rows = txnPage?.results || [];
+		return rows.filter((row) => rowMatchesChip(row, selectedChip)).slice(0, 5);
+	}, [txnPage, selectedChip]);
+
+	const barRows = useMemo(() => {
+		const cats = data?.categories || [];
+		const denom = cats.reduce((sum, row) => sum + Number(row.amount || 0), 0);
+		if (denom <= 0) return [];
+		return cats
+			.map((row) => ({
+				id: row.id,
+				name: row.name,
+				amount: Number(row.amount || 0),
+				percent: Math.round((Number(row.amount || 0) / denom) * 100)
+			}))
+			.filter((row) => row.amount > 0);
 	}, [data]);
 
-	const rangeLabel = formatRangeLabel(data?.start, data?.end) || 'This period';
+	const chartPoints = useMemo(() => {
+		const points = series?.points || [];
+		const month = period === 'month';
+		return points.map((row) => {
+			const d = parseISO(row.period);
+			return {
+				label: month ? format(d, 'd') : format(d, 'EEE'),
+				spend: Number(row.txn_spend || 0)
+			};
+		});
+	}, [series, period]);
+
+	const onPeriod = (next) => {
+		setPeriod(next);
+		setSelectedChip(null);
+	};
 
 	return (
-		<div>
-			<PageHeader
-				title={`${greeting()}, ${name}`}
-				icon={LayoutDashboard}
-				description={`Category and balance mix for ${rangeLabel}.`}
-				actions={
-					mobile ? null : (
-						<Button variant="secondary" onClick={() => setScanOpen(true)}>
-							<ScanLine size={16} /> Scan receipt
-						</Button>
-					)
-				}
-			/>
-
-			{balance && (
-				<div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
-					<StatCard label="Balance" value={formatCost(balance.balance)} />
-					<StatCard label="Starting" value={formatCost(balance.starting_balance)} />
-					<StatCard label="Expenses (all time)" value={formatCost(balance.totals?.expense)} />
-				</div>
-			)}
-
-			<Card>
-				<CardHeader
-					title="Spend mix"
-					subtitle="Expense categories and starting vs spent this period"
-					action={
-						<div className="flex flex-wrap items-center justify-end gap-2">
-							<div className="border-line bg-surface-2 inline-flex rounded-md border p-0.5">
-								{PERIODS.map((g) => (
-									<Button
-										key={g.value}
-										size="sm"
-										variant={period === g.value ? 'primary' : 'ghost'}
-										className="h-8"
-										onClick={() => setPeriod(g.value)}
-									>
-										{g.label}
-									</Button>
-								))}
-							</div>
-							<Button
-								size="sm"
-								variant={includeArchived ? 'secondary' : 'ghost'}
-								className="h-8"
-								onClick={() => setIncludeArchived((v) => !v)}
-							>
-								{includeArchived ? 'Including archived' : 'Active only'}
-							</Button>
-						</div>
-					}
+		<>
+			<div className="flex min-h-0 flex-1 flex-col">
+				<DashboardHome
+					pager={mobile}
+					greeting={greeting()}
+					name={name}
+					balance={balance}
+					period={period}
+					onPeriod={onPeriod}
+					rangeLabel={formatRangeLabel(data?.start, data?.end)}
+					income={data?.totals?.income ?? '0'}
+					expense={data?.totals?.expense ?? data?.balance_composition?.spent ?? '0'}
+					chips={chips}
+					selectedChip={selectedChip}
+					onChip={setSelectedChip}
+					recent={recent}
+					recentLoading={recentLoading}
+					chartPoints={chartPoints}
+					chartLoading={chartLoading}
+					barRows={barRows}
+					breakdownLoading={breakdownLoading}
+					breakdownError={breakdownError}
+					showScan={!mobile && canEdit}
+					onScan={() => setScanOpen(true)}
 				/>
-				<CardBody>
-					{isLoading ? (
-						<LoadingScreen />
-					) : isError ? (
-						<EmptyState
-							icon={LayoutDashboard}
-							title="Could not load analytics"
-							description="Something went wrong while fetching spend data."
-						/>
-					) : (
-						<div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-							<CompactPie
-								title="By category"
-								data={categoryPieData}
-								colors={CATEGORY_COLORS}
-								emptyLabel="No line-item spend in this period."
-							/>
-							<CompactPie
-								title="Starting vs spent"
-								data={balancePieData}
-								colors={(entry) => BALANCE_COLORS[entry.key] || 'var(--muted)'}
-								emptyLabel="No starting balance or spend to compare."
-							/>
-						</div>
-					)}
-				</CardBody>
-			</Card>
+			</div>
 
 			{!mobile && (
 				<ReceiptImportModal
@@ -285,6 +177,6 @@ export default function DashboardPage() {
 					}}
 				/>
 			)}
-		</div>
+		</>
 	);
 }

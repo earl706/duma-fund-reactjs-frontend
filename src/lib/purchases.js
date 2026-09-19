@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 
+import { useActiveProfileId } from '../stores/profileStore';
 import { del, get, post } from './api';
 
 export function lookupPurchases(q, limit = 5) {
@@ -37,19 +38,25 @@ export function useDebouncedValue(value, delayMs = 280) {
 }
 
 export function usePurchaseInsights(options = {}) {
+	const profileId = useActiveProfileId();
+	const { enabled, ...rest } = options;
 	return useQuery({
-		queryKey: ['finance-purchase-insights'],
+		queryKey: ['finance-purchase-insights', profileId],
 		queryFn: fetchPurchaseInsights,
-		...options
+		enabled: profileId != null && enabled !== false,
+		...rest
 	});
 }
 
 export function usePurchaseNotifications(options = {}) {
+	const profileId = useActiveProfileId();
+	const { enabled, ...rest } = options;
 	return useQuery({
-		queryKey: ['finance-purchase-notifications'],
+		queryKey: ['finance-purchase-notifications', profileId],
 		queryFn: fetchPurchaseNotifications,
 		refetchOnWindowFocus: true,
-		...options
+		enabled: profileId != null && enabled !== false,
+		...rest
 	});
 }
 
@@ -58,10 +65,11 @@ export function usePurchaseLookup(query, { enabled = true, limit = 5, debounceMs
 	const debounced = useDebouncedValue(trimmed, debounceMs);
 	const ready = enabled && debounced.length >= 2;
 
+	const profileId = useActiveProfileId();
 	return useQuery({
-		queryKey: ['finance-purchase-lookup', debounced, limit],
+		queryKey: ['finance-purchase-lookup', profileId, debounced, limit],
 		queryFn: () => lookupPurchases(debounced, limit),
-		enabled: ready,
+		enabled: ready && profileId != null,
 		placeholderData: (prev) => prev,
 		staleTime: 15_000
 	});

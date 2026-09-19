@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Link } from 'react-router-dom';
-import { ExternalLink, Info, Plus, Trash2 } from 'lucide-react';
+import { CopyPlus, ExternalLink, Info, Plus, Trash2 } from 'lucide-react';
 
 import { cn } from '../../lib/format';
 import { CategoryMultiSelect } from '../finance/CategoryMultiSelect';
@@ -23,6 +24,86 @@ function StatusDot({ status }) {
 	);
 }
 
+const OVERLAY_PAD = 8;
+const OVERLAY_ESTIMATE = 240;
+
+/** Category (and similar) popovers must leave the table so later rows cannot paint over them. */
+function SheetOverlay({ anchor, overlayRef, minWidth = 224, zIndex = 70, onMouseDown, children }) {
+	const [box, setBox] = useState(null);
+	const nodeRef = useRef(null);
+
+	const setNode = (el) => {
+		nodeRef.current = el;
+		if (typeof overlayRef === 'function') overlayRef(el);
+		else if (overlayRef) overlayRef.current = el;
+	};
+
+	const place = useCallback(() => {
+		if (!anchor) return;
+		const rect = anchor.getBoundingClientRect();
+		const viewW = window.innerWidth;
+		const viewH = window.innerHeight;
+		const width = Math.min(Math.max(rect.width, minWidth), viewW - OVERLAY_PAD * 2);
+		const left = Math.min(Math.max(rect.left, OVERLAY_PAD), viewW - width - OVERLAY_PAD);
+		const height = nodeRef.current?.offsetHeight || OVERLAY_ESTIMATE;
+		const spaceBelow = viewH - rect.top - OVERLAY_PAD;
+		const spaceAbove = rect.bottom - OVERLAY_PAD;
+		const flipUp = height > spaceBelow && spaceAbove > spaceBelow;
+		let top = flipUp ? rect.bottom - height : rect.top;
+		const maxH = viewH - OVERLAY_PAD * 2;
+		if (top < OVERLAY_PAD) top = OVERLAY_PAD;
+		if (top + height > viewH - OVERLAY_PAD)
+			top = Math.max(OVERLAY_PAD, viewH - height - OVERLAY_PAD);
+		setBox((prev) => {
+			if (
+				prev &&
+				prev.top === top &&
+				prev.left === left &&
+				prev.width === width &&
+				prev.maxHeight === maxH
+			) {
+				return prev;
+			}
+			return { top, left, width, maxHeight: maxH };
+		});
+	}, [anchor, minWidth]);
+
+	useLayoutEffect(() => {
+		if (!anchor) {
+			setBox(null);
+			return;
+		}
+		place();
+		const id = requestAnimationFrame(place);
+		window.addEventListener('scroll', place, true);
+		window.addEventListener('resize', place);
+		return () => {
+			cancelAnimationFrame(id);
+			window.removeEventListener('scroll', place, true);
+			window.removeEventListener('resize', place);
+		};
+	}, [anchor, place]);
+
+	if (!box || typeof document === 'undefined') return null;
+	return createPortal(
+		<div
+			ref={setNode}
+			className="border-primary bg-surface fixed flex flex-col overflow-hidden border shadow-lg"
+			style={{
+				top: box.top,
+				left: box.left,
+				width: box.width,
+				maxHeight: box.maxHeight,
+				zIndex
+			}}
+			onMouseDown={onMouseDown}
+		>
+			{children}
+		</div>,
+		document.body
+	);
+}
+
 /**
  * Spreadsheet-style data table.
  * Click a cell to select it; Shift+click extends the selection. Drag the fill
@@ -34,6 +115,9 @@ function StatusDot({ status }) {
  * `{ id, field, value, patch: { [field]: qty, [unitKey]: unit } }`.
  * Column type `multi-select`: checkbox list (expense categories). Commit sends
  * `{ id, field, value, patch }` from `col.buildPatch(ids, primaryId)`.
+ * Column type `actions`: `info` / `duplicate` / `delete` icon buttons.
+ * Expense category editor is portaled to document.body so later table rows
+ * cannot paint over it. Opens upward when the cell is near the viewport bottom.
  */
 export function DataSheet({
 	rows,
@@ -41,6 +125,7 @@ export function DataSheet({
 	onCommit,
 	onAdd,
 	onRequestDelete,
+	onRequestDuplicate,
 	onRequestInfo,
 	onBulkDelete,
 	selectable = false,
@@ -50,7 +135,8 @@ export function DataSheet({
 	addLabel = 'Add row',
 	emptyMessage = 'No rows yet. Add a row to get started.',
 	rowLabel = (row) => row.title || 'row',
-	compact = true
+	compact = true,
+	readOnly = false
 }) {
 	const [edit, setEdit] = useState(null);
 	const [draft, setDraft] = useState('');
@@ -60,6 +146,7 @@ export function DataSheet({
 	const [cellFocus, setCellFocus] = useState(null);
 	const [fillPreviewEnd, setFillPreviewEnd] = useState(null);
 	const [isFillDragging, setIsFillDragging] = useState(false);
+	const [overlayAnchor, setOverlayAnchor] = useState(null);
 	const inputRef = useRef(null);
 	const editorRef = useRef(null);
 	const tableRef = useRef(null);
@@ -67,8 +154,13 @@ export function DataSheet({
 	const autoEditKey = useRef(null);
 	const fillDragging = useRef(false);
 
+	const canMutate = !readOnly;
+	const sheetSelectable = selectable && canMutate;
+	const sheetOnAdd = canMutate ? onAdd : undefined;
 	const rowIds = useMemo(() => new Set(rows.map((r) => r.id)), [rows]);
-	const editableKeys = new Set(columns.filter((c) => c.editable).map((c) => c.key));
+	const editableKeys = new Set(
+		canMutate ? columns.filter((c) => c.editable).map((c) => c.key) : []
+	);
 
 	const rowIndex = useCallback((id) => rows.findIndex((r) => r.id === id), [rows]);
 	const colIndex = useCallback((key) => columns.findIndex((c) => c.key === key), [columns]);
@@ -475,7 +567,19 @@ export function DataSheet({
 							<Info size={14} />
 						</Button>
 					)}
-					{actions.includes('delete') && (
+					{canMutate && actions.includes('duplicate') && (
+						<Button
+							variant="ghost"
+							size="icon"
+							className="h-7 w-7"
+							onClick={() => onRequestDuplicate?.(row)}
+							disabled={adding || saving}
+							aria-label={`Duplicate ${rowLabel(row)}`}
+						>
+							<CopyPlus size={14} />
+						</Button>
+					)}
+					{canMutate && actions.includes('delete') && (
 						<Button
 							variant="ghost"
 							size="icon"
@@ -496,7 +600,7 @@ export function DataSheet({
 
 	return (
 		<div className="border-line bg-surface overflow-hidden rounded-md border">
-			{selectable && selectedIds.size > 0 && (
+			{sheetSelectable && selectedIds.size > 0 && (
 				<div className="border-line bg-surface-2 flex flex-wrap items-center gap-2 border-b px-2 py-1.5">
 					<span className={cn('text-muted', cellText)}>{selectedIds.size} selected</span>
 					{onBulkDelete && (
@@ -522,7 +626,7 @@ export function DataSheet({
 			<table ref={tableRef} className={cn('w-full table-fixed border-collapse', cellText)}>
 				<thead>
 					<tr className="bg-surface-2 border-line border-b">
-						{selectable && (
+						{sheetSelectable && (
 							<th scope="col" className={cn('w-8', headPad)}>
 								<input
 									type="checkbox"
@@ -557,7 +661,7 @@ export function DataSheet({
 					{rows.length === 0 ? (
 						<tr>
 							<td
-								colSpan={columns.length + (selectable ? 1 : 0)}
+								colSpan={columns.length + (sheetSelectable ? 1 : 0)}
 								className="text-muted px-3 py-8 text-center text-sm"
 							>
 								{emptyMessage}
@@ -575,7 +679,7 @@ export function DataSheet({
 										selected ? 'bg-primary/8' : 'hover:bg-surface-2/60'
 									)}
 								>
-									{selectable && (
+									{sheetSelectable && (
 										<td className={cn('w-8 text-center', cellPad)}>
 											<input
 												type="checkbox"
@@ -655,62 +759,73 @@ export function DataSheet({
 												);
 											}
 
+											const isCategoryOverlay =
+												col.type === 'multi-select' ||
+												(col.type === 'txn-category' && row.type === 'expense');
+
 											return (
-												<td key={col.key} className={cn('relative p-0', col.className)}>
-													{col.type === 'multi-select' ||
-													(col.type === 'txn-category' && row.type === 'expense') ? (
-														<div
-															ref={editorRef}
-															className="border-primary bg-surface absolute top-0 left-0 z-40 min-w-[14rem] border shadow-md"
-															onMouseDown={() => {
-																skipBlurCancel.current = true;
-															}}
-														>
-															<CategoryMultiSelect
-																options={(col.expenseOptions || col.options || []).map((o) => o)}
-																max={col.maxSelections || 5}
-																value={(() => {
-																	try {
-																		return JSON.parse(draft || '{"ids":[]}').ids || [];
-																	} catch {
-																		return [];
-																	}
-																})()}
-																primaryId={(() => {
-																	try {
-																		return JSON.parse(draft || '{}').primaryId ?? null;
-																	} catch {
-																		return null;
-																	}
-																})()}
-																onChange={({ ids, primaryId }) => {
-																	setDraft(JSON.stringify({ ids, primaryId }));
+												<td
+													key={col.key}
+													ref={isCategoryOverlay ? setOverlayAnchor : undefined}
+													className={cn('relative p-0', col.className)}
+												>
+													{isCategoryOverlay ? (
+														<>
+															<div className="h-7" />
+															<SheetOverlay
+																anchor={overlayAnchor}
+																overlayRef={editorRef}
+																onMouseDown={() => {
+																	skipBlurCancel.current = true;
 																}}
-															/>
-															<div className="border-line flex justify-end gap-1 border-t px-1.5 py-1">
-																<Button
-																	variant="ghost"
-																	size="sm"
-																	className="h-6 text-[10px]"
-																	onClick={() => {
-																		skipBlurCancel.current = true;
-																		cancelEdit();
+															>
+																<CategoryMultiSelect
+																	className="min-h-0 flex-1"
+																	options={(col.expenseOptions || col.options || []).map((o) => o)}
+																	max={col.maxSelections || 5}
+																	value={(() => {
+																		try {
+																			return JSON.parse(draft || '{"ids":[]}').ids || [];
+																		} catch {
+																			return [];
+																		}
+																	})()}
+																	primaryId={(() => {
+																		try {
+																			return JSON.parse(draft || '{}').primaryId ?? null;
+																		} catch {
+																			return null;
+																		}
+																	})()}
+																	onChange={({ ids, primaryId }) => {
+																		setDraft(JSON.stringify({ ids, primaryId }));
 																	}}
-																>
-																	Cancel
-																</Button>
-																<Button
-																	size="sm"
-																	className="h-6 text-[10px]"
-																	onClick={() => {
-																		skipBlurCancel.current = true;
-																		commitEdit();
-																	}}
-																>
-																	Done
-																</Button>
-															</div>
-														</div>
+																/>
+																<div className="border-line flex shrink-0 justify-end gap-1 border-t px-1.5 py-1">
+																	<Button
+																		variant="ghost"
+																		size="sm"
+																		className="h-6 text-[10px]"
+																		onClick={() => {
+																			skipBlurCancel.current = true;
+																			cancelEdit();
+																		}}
+																	>
+																		Cancel
+																	</Button>
+																	<Button
+																		size="sm"
+																		className="h-6 text-[10px]"
+																		onClick={() => {
+																			skipBlurCancel.current = true;
+																			commitEdit();
+																		}}
+																	>
+																		Done
+																	</Button>
+																</div>
+															</SheetOverlay>
+														</>
 													) : col.type === 'select' ||
 													  col.type === 'status-icon' ||
 													  (col.type === 'txn-category' && row.type === 'income') ? (
@@ -783,7 +898,8 @@ export function DataSheet({
 											<td
 												key={col.key}
 												className={cn(
-													'text-fg relative truncate select-none',
+													'text-fg truncate select-none',
+													hasFillHandle && 'relative',
 													cellPad,
 													col.align === 'right' && 'text-right tabular-nums',
 													isFillableCell(col) && 'hover:bg-primary/5 cursor-cell',
@@ -822,13 +938,13 @@ export function DataSheet({
 					)}
 				</tbody>
 			</table>
-			{onAdd && (
+			{sheetOnAdd && (
 				<div className="border-line bg-surface-2/40 flex border-t px-2 py-1">
 					<Button
 						variant="ghost"
 						size="sm"
 						className="text-muted hover:text-fg h-7 text-xs"
-						onClick={onAdd}
+						onClick={sheetOnAdd}
 						loading={adding}
 						disabled={adding}
 					>

@@ -1,17 +1,10 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import {
-	ArrowDownLeft,
-	ArrowLeftRight,
-	ArrowUpRight,
-	Plus,
-	Search,
-	ShoppingBag,
-	SlidersHorizontal
-} from 'lucide-react';
+import { ArrowLeftRight, Plus, Search, SlidersHorizontal, Trash2 } from 'lucide-react';
 
 import { cn, formatCost, formatDate } from '../../lib/format';
 import { Button, EmptyState, LoadingScreen, Modal } from '../ui';
+import { TypeGlyph, amountToneClass, formatSignedAmount } from './txnDisplay';
 
 const TYPE_FILTER = [
 	{ value: '', label: 'All types' },
@@ -26,38 +19,6 @@ const STATUS_FILTER = [
 	{ value: '', label: 'All' },
 	{ value: 'archived', label: 'Archived' }
 ];
-
-const TYPE_ICON = {
-	expense: { Icon: ShoppingBag, wrap: 'bg-accent/15 text-accent' },
-	income: { Icon: ArrowDownLeft, wrap: 'bg-success/15 text-success' },
-	transfer_in: { Icon: ArrowDownLeft, wrap: 'bg-primary/15 text-primary' },
-	transfer_out: { Icon: ArrowUpRight, wrap: 'bg-warning/15 text-warning' }
-};
-
-function formatSignedAmount(amount, type) {
-	const formatted = formatCost(amount);
-	if (formatted === '—') return formatted;
-	const inflow = type === 'income' || type === 'transfer_in';
-	return `${inflow ? '+' : '−'}${formatted}`;
-}
-
-function amountToneClass(type) {
-	if (type === 'income' || type === 'transfer_in') return 'text-success';
-	if (type === 'expense' || type === 'transfer_out') return 'text-danger';
-	return 'text-fg';
-}
-
-function TypeGlyph({ type }) {
-	const meta = TYPE_ICON[type] || { Icon: ArrowLeftRight, wrap: 'bg-surface-2 text-muted' };
-	const Icon = meta.Icon;
-	return (
-		<span
-			className={cn('flex h-11 w-11 shrink-0 items-center justify-center rounded-full', meta.wrap)}
-		>
-			<Icon size={18} strokeWidth={2.1} />
-		</span>
-	);
-}
 
 function FilterChip({ selected, onClick, children }) {
 	return (
@@ -77,7 +38,7 @@ function FilterChip({ selected, onClick, children }) {
 }
 
 /**
- * iOS ledger: balance hero + tappable rows. Desktop DataSheet stays on the page.
+ * iOS ledger: balance hero + tappable rows. Editors get a per-row delete.
  */
 export function MobileTransactionsView({
 	balance,
@@ -89,7 +50,8 @@ export function MobileTransactionsView({
 	filters,
 	setFilter,
 	onAdd,
-	adding
+	adding,
+	onRequestDelete
 }) {
 	const [filterOpen, setFilterOpen] = useState(false);
 	const typeValue = filters.type || '';
@@ -166,11 +128,11 @@ export function MobileTransactionsView({
 			) : (
 				<ul className="divide-line divide-y">
 					{rows.map((row) => (
-						<li key={row.id}>
+						<li key={row.id} className="flex items-center gap-0.5">
 							<Link
 								to={`/transactions/${row.id}`}
 								className={cn(
-									'flex min-h-17 cursor-pointer items-center gap-3 py-3',
+									'flex min-h-17 min-w-0 flex-1 cursor-pointer items-center gap-3 py-3',
 									row.status === 'archived' && 'opacity-55'
 								)}
 							>
@@ -194,20 +156,33 @@ export function MobileTransactionsView({
 									{formatSignedAmount(row.amount, row.type)}
 								</span>
 							</Link>
+							{onRequestDelete && (
+								<Button
+									variant="ghost"
+									size="icon"
+									className="text-muted hover:text-danger h-11 w-11 shrink-0 rounded-full"
+									onClick={() => onRequestDelete(row)}
+									aria-label={`Delete ${row.title || 'transaction'}`}
+								>
+									<Trash2 size={18} />
+								</Button>
+							)}
 						</li>
 					))}
 				</ul>
 			)}
 
-			<button
-				type="button"
-				onClick={onAdd}
-				disabled={adding}
-				aria-label="New expense"
-				className="bg-primary text-primary-fg shadow-primary/30 fixed right-4 bottom-[calc(5.75rem+env(safe-area-inset-bottom))] z-30 flex h-14 w-14 cursor-pointer items-center justify-center rounded-full shadow-lg disabled:opacity-50"
-			>
-				<Plus size={26} strokeWidth={2.4} />
-			</button>
+			{onAdd && (
+				<button
+					type="button"
+					onClick={onAdd}
+					disabled={adding}
+					aria-label="New expense"
+					className="bg-primary text-primary-fg shadow-primary/30 fixed right-4 bottom-[calc(5.75rem+env(safe-area-inset-bottom))] z-30 flex h-14 w-14 cursor-pointer items-center justify-center rounded-full shadow-lg disabled:opacity-50"
+				>
+					<Plus size={26} strokeWidth={2.4} />
+				</button>
+			)}
 
 			<Modal open={filterOpen} onClose={() => setFilterOpen(false)} title="Filters" size="sm">
 				<div className="space-y-5">

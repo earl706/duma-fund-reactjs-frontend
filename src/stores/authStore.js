@@ -1,7 +1,8 @@
 import { create } from 'zustand';
 
 import { api, getApiBaseURL, tokenStore } from '../lib/api';
-import { effectiveRememberMe } from '../lib/desktop';
+import { effectiveRememberMe, isMobileApp } from '../lib/desktop';
+import { useProfileStore } from './profileStore';
 
 function isTransientAuthError(err) {
 	if (!err?.response) return true;
@@ -9,7 +10,9 @@ function isTransientAuthError(err) {
 	return status >= 500 || status === 429;
 }
 
-function applySession(set, data) {
+let authGeneration = 0;
+
+function applySession(data) {
 	if (data.mfa_required) {
 		return {
 			mfaRequired: true,
@@ -18,6 +21,10 @@ function applySession(set, data) {
 			error: null
 		};
 	}
+	if (!data.access || !data.user) {
+		throw new Error('Sign-in did not return a session.');
+	}
+	authGeneration += 1;
 	tokenStore.set({ access: data.access, refresh: data.refresh });
 	return {
 		user: data.user,
@@ -28,6 +35,12 @@ function applySession(set, data) {
 		error: null,
 		pendingVerificationEmail: null
 	};
+}
+
+function networkLoginMessage() {
+	return isMobileApp()
+		? 'Could not reach the server. Keep DumaFund open on your Mac and stay on the same Wi-Fi.'
+		: 'Could not reach the server. Check your connection and try again.';
 }
 
 export const useAuthStore = create((set, get) => ({
@@ -43,7 +56,7 @@ export const useAuthStore = create((set, get) => ({
 
 	async login(email, password, { remember = true } = {}) {
 		const rememberMe = effectiveRememberMe(remember);
-		set({ status: 'loading', error: null, pendingRemember: rememberMe });
+		set({ error: null, pendingRemember: rememberMe });
 		try {
 			const { data } = await api.post('/auth/login/', {
 				email,
@@ -60,11 +73,20 @@ export const useAuthStore = create((set, get) => ({
 				});
 				return null;
 			}
-			set(applySession(set, data));
+			set(applySession(data));
 			return data.user;
 		} catch (err) {
+			if (err.message === 'Sign-in did not return a session.') {
+				set({ status: 'unauthenticated', error: err.message });
+				throw err;
+			}
+			if (!err.response) {
+				const message = networkLoginMessage();
+				set({ status: 'unauthenticated', error: message });
+				throw new Error(message, { cause: err });
+			}
 			const data = err.response?.data;
-			if (data?.email_verification_required || err.response?.status === 403) {
+			if (data?.email_verification_required) {
 				set({
 					status: 'unauthenticated',
 					error: data?.detail || 'Verify your email before signing in.',
@@ -82,7 +104,7 @@ export const useAuthStore = create((set, get) => ({
 	},
 
 	async verifyMfa({ code, recoveryCode, remember } = {}) {
-		set({ status: 'loading', error: null });
+		set({ error: null });
 		const rememberMe = effectiveRememberMe(
 			remember !== undefined ? remember : get().pendingRemember
 		);
@@ -93,7 +115,7 @@ export const useAuthStore = create((set, get) => ({
 				recovery_code: recoveryCode || undefined,
 				remember: rememberMe
 			});
-			set(applySession(set, data));
+			set(applySession(data));
 			return data.user;
 		} catch (err) {
 			const message = err.response?.data?.detail || 'Invalid code.';
@@ -154,7 +176,7 @@ export const useAuthStore = create((set, get) => ({
 				});
 				return null;
 			}
-			set(applySession(set, data));
+			set(applySession(data));
 			return data.user;
 		} catch (err) {
 			const message = err.response?.data?.detail || 'OAuth sign-in failed.';
@@ -164,6 +186,7 @@ export const useAuthStore = create((set, get) => ({
 	},
 
 	async bootstrap() {
+		const gen = authGeneration;
 		if (!tokenStore.access && !tokenStore.refresh) {
 			set({ status: 'unauthenticated' });
 			return;
@@ -171,11 +194,14 @@ export const useAuthStore = create((set, get) => ({
 		set({ status: 'loading' });
 		const attempts = 8;
 		for (let i = 0; i < attempts; i += 1) {
+			if (gen !== authGeneration) return;
 			try {
 				const { data } = await api.get('/auth/me/');
+				if (gen !== authGeneration) return;
 				set({ user: data, status: 'authenticated', error: null });
 				return;
 			} catch (err) {
+				if (gen !== authGeneration) return;
 				const status = err.response?.status;
 				if (status === 401 || status === 403) {
 					tokenStore.clear();
@@ -208,6 +234,7 @@ export const useAuthStore = create((set, get) => ({
 
 	logout() {
 		tokenStore.clear();
+		useProfileStore.getState().reset();
 		set({
 			user: null,
 			status: 'unauthenticated',

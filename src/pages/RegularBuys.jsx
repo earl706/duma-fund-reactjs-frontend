@@ -4,6 +4,7 @@ import { RefreshCw } from 'lucide-react';
 import { formatCost } from '../lib/format';
 import { usePurchaseActions, usePurchaseInsights } from '../lib/purchases';
 import { toast } from '../stores/toastStore';
+import { useIsProfileOwner } from '../stores/profileStore';
 import { PageHeader } from '../components/layout/PageHeader';
 import { Button, EmptyState, LoadingScreen } from '../components/ui';
 
@@ -45,7 +46,7 @@ function Section({ title, description, rows, empty, onMarkRegular }) {
 									</Link>
 								) : null}
 							</div>
-							{row.status !== 'regular' && (
+							{onMarkRegular && row.status !== 'regular' && (
 								<div className="flex shrink-0 flex-wrap gap-1.5">
 									<Button
 										variant="secondary"
@@ -68,6 +69,7 @@ function Section({ title, description, rows, empty, onMarkRegular }) {
 export default function RegularBuysPage() {
 	const { data, isLoading, isError, refetch, isFetching } = usePurchaseInsights();
 	const { markRegular } = usePurchaseActions();
+	const isOwner = useIsProfileOwner();
 
 	const onMarkRegular = (title) => {
 		markRegular.mutate(title, {
@@ -103,28 +105,28 @@ export default function RegularBuysPage() {
 						description="Approaching your usual repurchase interval."
 						rows={data?.due_soon}
 						empty="Nothing due based on your recent buying rhythm."
-						onMarkRegular={onMarkRegular}
+						onMarkRegular={isOwner ? onMarkRegular : undefined}
 					/>
 					<Section
 						title="Regular"
 						description="Bought at least twice in the last 30 days, or marked by you."
 						rows={data?.regular}
 						empty="No regular items yet. Log a few repeats or mark items while typing."
-						onMarkRegular={onMarkRegular}
+						onMarkRegular={isOwner ? onMarkRegular : undefined}
 					/>
 					<Section
 						title="Lapsed"
 						description="Used to be regular but haven’t bought in a while."
 						rows={data?.lapsed}
 						empty="No lapsed staples."
-						onMarkRegular={onMarkRegular}
+						onMarkRegular={isOwner ? onMarkRegular : undefined}
 					/>
 					<Section
 						title="Recently seen"
 						description="Other items with purchase history (not auto-regular)."
 						rows={data?.recently_seen}
 						empty="No other purchase history yet."
-						onMarkRegular={onMarkRegular}
+						onMarkRegular={isOwner ? onMarkRegular : undefined}
 					/>
 				</>
 			)}

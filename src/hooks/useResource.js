@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { del, get, patch, post } from '../lib/api';
+import { useActiveProfileId } from '../stores/profileStore';
 import { toast } from '../stores/toastStore';
 
 /**
@@ -18,19 +19,24 @@ export function createResourceHooks(key, basePath) {
 	const detailKey = (id) => [key, 'detail', id];
 
 	function useList(params, options = {}) {
+		const profileId = useActiveProfileId();
+		const { enabled, ...rest } = options;
 		return useQuery({
-			queryKey: listKey(params),
+			queryKey: [key, 'list', profileId, params || {}],
 			queryFn: () => get(basePath, { params }),
-			...options
+			enabled: profileId != null && enabled !== false,
+			...rest
 		});
 	}
 
 	function useDetail(id, options = {}) {
+		const profileId = useActiveProfileId();
+		const { enabled, ...rest } = options;
 		return useQuery({
-			queryKey: detailKey(id),
+			queryKey: [key, 'detail', profileId, id],
 			queryFn: () => get(`${basePath}${id}/`),
-			enabled: id != null,
-			...options
+			enabled: profileId != null && id != null && enabled !== false,
+			...rest
 		});
 	}
 
@@ -103,21 +109,23 @@ export function createNestedResourceHooks(key, pathFn, { parentKey } = {}) {
 	}
 
 	function useList(parentId, params, options = {}) {
+		const profileId = useActiveProfileId();
 		const { enabled, ...rest } = options;
 		return useQuery({
-			queryKey: listKey(parentId, params),
+			queryKey: [key, parentId, 'list', profileId, params || {}],
 			queryFn: () => get(pathFn(parentId), { params }),
-			enabled: parentId != null && enabled !== false,
+			enabled: profileId != null && parentId != null && enabled !== false,
 			...rest
 		});
 	}
 
 	function useDetail(parentId, id, options = {}) {
+		const profileId = useActiveProfileId();
 		const { enabled, ...rest } = options;
 		return useQuery({
-			queryKey: detailKey(parentId, id),
+			queryKey: [key, parentId, 'detail', profileId, id],
 			queryFn: () => get(`${pathFn(parentId)}${id}/`),
-			enabled: parentId != null && id != null && enabled !== false,
+			enabled: profileId != null && parentId != null && id != null && enabled !== false,
 			...rest
 		});
 	}

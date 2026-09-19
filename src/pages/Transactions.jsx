@@ -4,12 +4,14 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeftRight, Plus, ScanLine } from 'lucide-react';
 
 import { categoriesApi, transactionsApi, useFinanceBalance } from '../lib/resources';
+import { post } from '../lib/api';
 import { fetchAllPages } from '../lib/fetchAll';
 import { isMobileApp } from '../lib/desktop';
 import { firstCommittedTransactionId, mediaUrl } from '../lib/receiptScan';
 import { STATUS_TONE } from '../lib/status';
 import { cn, formatCost, formatDate, formatDateShort, parseDateShort } from '../lib/format';
 import { toast } from '../stores/toastStore';
+import { useActiveProfileId, useCanEditLedger } from '../stores/profileStore';
 import { useListControls } from '../hooks/useListControls';
 import { ReceiptImportModal } from '../components/finance/ReceiptImportModal';
 import { MobileTransactionsView } from '../components/finance/MobileTransactionsView';
@@ -100,6 +102,8 @@ export default function TransactionsPage() {
 	const queryClient = useQueryClient();
 	const mobile = isMobileApp();
 	const { data: balance } = useFinanceBalance();
+	const canEdit = useCanEditLedger();
+	const profileId = useActiveProfileId();
 	const { data: categoriesData } = categoriesApi.useList({ page_size: 100, kind: 'expense' });
 	const { data: incomeCats } = categoriesApi.useList({ page_size: 100, kind: 'income' });
 
@@ -143,8 +147,9 @@ export default function TransactionsPage() {
 		isLoading,
 		isError
 	} = useQuery({
-		queryKey: ['finance-transactions', 'all', listParams],
-		queryFn: () => fetchAllPages('/finance/transactions/', listParams)
+		queryKey: ['finance-transactions', 'all', profileId, listParams],
+		queryFn: () => fetchAllPages('/finance/transactions/', listParams),
+		enabled: profileId != null
 	});
 
 	const [deleteTarget, setDeleteTarget] = useState(null);
@@ -153,6 +158,7 @@ export default function TransactionsPage() {
 	const [autoEdit, setAutoEdit] = useState(null);
 	const [pendingFocusId, setPendingFocusId] = useState(null);
 	const [bulkDeleting, setBulkDeleting] = useState(false);
+	const [duplicating, setDuplicating] = useState(false);
 	const [scanOpen, setScanOpen] = useState(false);
 
 	useEffect(() => {
@@ -205,6 +211,59 @@ export default function TransactionsPage() {
 			date_created: todayISO(),
 			date_effective: todayISO()
 		});
+	};
+
+	const duplicateTxn = async (row) => {
+		if (duplicating || !row?.id) return;
+		setDuplicating(true);
+		try {
+			const isTransfer = row.type === 'transfer_in' || row.type === 'transfer_out';
+			const categoryIds = row.categories?.length
+				? row.categories.map(Number)
+				: row.category != null
+					? [Number(row.category)]
+					: [];
+			const created = await post('/finance/transactions/', {
+				type: row.type,
+				title: row.title || '',
+				merchant: row.merchant || '',
+				amount: row.amount ?? '0.00',
+				note: row.note || '',
+				category: isTransfer ? null : (row.category ?? null),
+				categories: isTransfer ? [] : categoryIds,
+				status: row.status || 'active',
+				date_created: todayISO(),
+				date_effective: todayISO()
+			});
+			if (row.type === 'expense' && Number(row.item_count) > 0 && created?.id != null) {
+				const items = await fetchAllPages(`/finance/transactions/${row.id}/items/`);
+				await Promise.all(
+					items.map((item) =>
+						post(`/finance/transactions/${created.id}/items/`, {
+							title: item.title,
+							cost: item.cost,
+							quantity: item.quantity,
+							unit: item.unit,
+							status: item.status
+						})
+					)
+				);
+			}
+			toast.success('Transaction duplicated.');
+			queryClient.invalidateQueries({ queryKey: ['finance-transactions'] });
+			queryClient.invalidateQueries({ queryKey: ['finance-balance'] });
+			if (created?.id != null) {
+				setAutoEdit({
+					id: created.id,
+					field: 'title',
+					key: `${created.id}-${Date.now()}`
+				});
+			}
+		} catch {
+			toast.error('Could not duplicate transaction.');
+		} finally {
+			setDuplicating(false);
+		}
 	};
 
 	const commitCell = ({ id, field, value, patch }) => {
@@ -360,8 +419,8 @@ export default function TransactionsPage() {
 				key: 'actions',
 				label: '',
 				type: 'actions',
-				actions: ['info', 'delete'],
-				className: 'w-[4.5rem]'
+				actions: ['info', 'duplicate', 'delete'],
+				className: 'w-[6.75rem]'
 			}
 		],
 		[allCategories, expenseSelectOptions, incomeSelectOptions]
@@ -417,20 +476,57 @@ export default function TransactionsPage() {
 		];
 	};
 
+	const deleteDialog = (
+		<Modal
+			open={Boolean(deleteTarget)}
+			onClose={() => !removeTxn.isPending && setDeleteTarget(null)}
+			title="Delete transaction"
+			size="sm"
+			footer={
+				<>
+					<Button
+						variant="secondary"
+						onClick={() => setDeleteTarget(null)}
+						disabled={removeTxn.isPending}
+					>
+						Cancel
+					</Button>
+					<Button
+						variant="danger"
+						loading={removeTxn.isPending}
+						onClick={() => removeTxn.mutate(deleteTarget.id)}
+					>
+						Delete
+					</Button>
+				</>
+			}
+		>
+			<p className="text-muted text-sm">
+				Delete{' '}
+				<span className="text-fg font-medium">{deleteTarget?.title || 'this transaction'}</span>?
+				Line items will be removed. This cannot be undone.
+			</p>
+		</Modal>
+	);
+
 	if (mobile) {
 		return (
-			<MobileTransactionsView
-				balance={balance}
-				rows={rows}
-				isLoading={isLoading}
-				isError={isError}
-				search={search}
-				setSearch={setSearch}
-				filters={filters}
-				setFilter={setFilter}
-				onAdd={addExpense}
-				adding={createTxn.isPending}
-			/>
+			<>
+				<MobileTransactionsView
+					balance={balance}
+					rows={rows}
+					isLoading={isLoading}
+					isError={isError}
+					search={search}
+					setSearch={setSearch}
+					filters={filters}
+					setFilter={setFilter}
+					onAdd={canEdit ? addExpense : undefined}
+					adding={createTxn.isPending}
+					onRequestDelete={canEdit ? setDeleteTarget : undefined}
+				/>
+				{deleteDialog}
+			</>
 		);
 	}
 
@@ -445,16 +541,18 @@ export default function TransactionsPage() {
 						: 'Income, expenses, and transfers.'
 				}
 				actions={
-					<div className="flex flex-wrap gap-2">
-						{!mobile && (
-							<Button variant="secondary" onClick={() => setScanOpen(true)}>
-								<ScanLine size={16} /> Scan receipt
+					canEdit ? (
+						<div className="flex flex-wrap gap-2">
+							{!mobile && (
+								<Button variant="secondary" onClick={() => setScanOpen(true)}>
+									<ScanLine size={16} /> Scan receipt
+								</Button>
+							)}
+							<Button onClick={addExpense} loading={createTxn.isPending}>
+								<Plus size={16} /> New expense
 							</Button>
-						)}
-						<Button onClick={addExpense} loading={createTxn.isPending}>
-							<Plus size={16} /> New expense
-						</Button>
-					</div>
+						</div>
+					) : null
 				}
 			/>
 
@@ -496,49 +594,22 @@ export default function TransactionsPage() {
 					rows={rows}
 					columns={columns}
 					onCommit={commitCell}
-					onAdd={addExpense}
-					onRequestDelete={setDeleteTarget}
+					onAdd={canEdit ? addExpense : undefined}
+					onRequestDelete={canEdit ? setDeleteTarget : undefined}
+					onRequestDuplicate={canEdit ? duplicateTxn : undefined}
 					onRequestInfo={setInfoTarget}
-					onBulkDelete={setBulkDeleteIds}
-					selectable
-					adding={createTxn.isPending}
-					saving={updateTxn.isPending}
+					onBulkDelete={canEdit ? setBulkDeleteIds : undefined}
+					selectable={canEdit}
+					readOnly={!canEdit}
+					adding={createTxn.isPending || duplicating}
+					saving={updateTxn.isPending || duplicating}
 					autoEdit={autoEdit}
 					addLabel="New expense"
 					emptyMessage="No transactions yet. Scan a receipt or add an expense."
 				/>
 			)}
 
-			<Modal
-				open={Boolean(deleteTarget)}
-				onClose={() => !removeTxn.isPending && setDeleteTarget(null)}
-				title="Delete transaction"
-				size="sm"
-				footer={
-					<>
-						<Button
-							variant="secondary"
-							onClick={() => setDeleteTarget(null)}
-							disabled={removeTxn.isPending}
-						>
-							Cancel
-						</Button>
-						<Button
-							variant="danger"
-							loading={removeTxn.isPending}
-							onClick={() => removeTxn.mutate(deleteTarget.id)}
-						>
-							Delete
-						</Button>
-					</>
-				}
-			>
-				<p className="text-muted text-sm">
-					Delete{' '}
-					<span className="text-fg font-medium">{deleteTarget?.title || 'this transaction'}</span>?
-					Line items will be removed. This cannot be undone.
-				</p>
-			</Modal>
+			{deleteDialog}
 
 			<Modal
 				open={Boolean(bulkDeleteIds?.length)}
