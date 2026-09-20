@@ -13,4 +13,4 @@ export { Pagination } from './Pagination';
 export { ListToolbar } from './ListToolbar';
 export { DataSheet } from './DataSheet';
 export { RecordInfoModal } from './RecordInfoModal';
-export { AppIcon } from './AppIcon';
+export { AppIcon, ICON_SRC } from './AppIcon';

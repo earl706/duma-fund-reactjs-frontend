@@ -42,7 +42,7 @@ export function SidebarContent() {
 	return (
 		<div className="flex h-full flex-col gap-6 p-4">
 			<div className="flex items-center gap-2 px-2 pt-1">
-				<AppIcon size={36} className="shrink-0" />
+				<AppIcon size={36} variant="default" className="shrink-0" />
 				<span className="text-fg text-lg font-bold tracking-tight">DumaFund</span>
 			</div>
 

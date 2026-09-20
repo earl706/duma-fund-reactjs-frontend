@@ -1,8 +1,8 @@
 import { cn } from '../../lib/format';
 
-const ICON_SRC = {
-	default: '/app-icon.svg',
-	inverse: '/app-icon-inverse.svg'
+export const ICON_SRC = {
+	default: `${import.meta.env.BASE_URL}app-icon.svg`,
+	inverse: `${import.meta.env.BASE_URL}app-icon-inverse.svg`
 };
 
 /** App logo — vector trace of `public/app-icon-source.png`. */

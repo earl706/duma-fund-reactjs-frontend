@@ -41,6 +41,10 @@ export function AuthShell({ children }) {
 					animate={{ opacity: 1, y: 0 }}
 					className="w-full max-w-sm"
 				>
+					<div className="mb-8 flex items-center gap-2 lg:hidden">
+						<AppIcon size={40} />
+						<span className="text-fg text-2xl font-bold">DumaFund</span>
+					</div>
 					{children}
 				</motion.div>
 			</div>
