@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, ArrowLeftRight, ImageDown, Plus, ScanLine } from 'lucide-react';
+import { ArrowLeft, ArrowLeftRight, ImageDown, Plus, ScanLine, Star } from 'lucide-react';
 
 import { categoriesApi, transactionItemsApi, transactionsApi } from '../lib/resources';
 import { post } from '../lib/api';
@@ -9,7 +9,7 @@ import { fetchAllPages } from '../lib/fetchAll';
 import { isMobileApp } from '../lib/desktop';
 import { mediaUrl } from '../lib/receiptScan';
 import { STATUS_TONE } from '../lib/status';
-import { formatCost, formatDate } from '../lib/format';
+import { cn, formatCost, formatDate } from '../lib/format';
 import {
 	canShareImageFile,
 	canvasToBlob,
@@ -24,11 +24,7 @@ import { useActiveProfileId, useCanEditLedger } from '../stores/profileStore';
 import { useListControls } from '../hooks/useListControls';
 import { GroceryExportModal } from '../components/costs/GroceryExportModal';
 import { ReceiptImportModal } from '../components/finance/ReceiptImportModal';
-import {
-	CategoryMultiSelect,
-	formatCategoryTags,
-	MAX_EXPENSE_CATEGORIES
-} from '../components/finance/CategoryMultiSelect';
+import { MAX_EXPENSE_CATEGORIES } from '../components/finance/CategoryMultiSelect';
 import { PageHeader } from '../components/layout/PageHeader';
 import {
 	Badge,
@@ -100,11 +96,6 @@ export default function TransactionDetailPage() {
 	const { data: incomeCatsData } = categoriesApi.useList({ page_size: 100, kind: 'income' });
 	const expenseCategories = useMemo(() => categoriesData?.results || [], [categoriesData?.results]);
 	const incomeCategories = useMemo(() => incomeCatsData?.results || [], [incomeCatsData?.results]);
-	const categoryMap = useMemo(() => {
-		const m = new Map();
-		expenseCategories.forEach((c) => m.set(c.id, c));
-		return m;
-	}, [expenseCategories]);
 	const defaultCategoryId =
 		txn?.category ||
 		expenseCategories.find((c) => c.name === 'Other' && !c.parent)?.id ||
@@ -253,6 +244,31 @@ export default function TransactionDetailPage() {
 	const commitCell = ({ id: itemId, field, value, patch }) => {
 		const body = patch ? { id: itemId, ...patch } : { id: itemId, [field]: value };
 		updateItem.mutate(body);
+	};
+
+	const applyCategoryDraft = ({ ids, primaryId }) => {
+		setCategoryDraftIds(ids);
+		setCategoryDraftPrimary(primaryId);
+	};
+
+	const toggleHeaderCategory = (id) => {
+		const selected = displayCategoryIds.map(Number);
+		const primary = displayPrimary != null ? Number(displayPrimary) : (selected[0] ?? null);
+		const n = Number(id);
+		if (selected.includes(n)) {
+			if (selected.length <= 1) return;
+			const ids = selected.filter((x) => x !== n);
+			applyCategoryDraft({ ids, primaryId: primary === n ? (ids[0] ?? null) : primary });
+		} else if (selected.length < MAX_EXPENSE_CATEGORIES) {
+			applyCategoryDraft({ ids: [...selected, n], primaryId: primary ?? n });
+		}
+	};
+
+	const setHeaderPrimary = (id) => {
+		const selected = displayCategoryIds.map(Number);
+		const n = Number(id);
+		if (!selected.includes(n)) return;
+		applyCategoryDraft({ ids: [n, ...selected.filter((x) => x !== n)], primaryId: n });
 	};
 
 	const saveHeaderCategories = () => {
@@ -427,26 +443,83 @@ export default function TransactionDetailPage() {
 			)}
 
 			{isExpense && (
-				<div className="border-line bg-surface mb-4 max-w-md rounded-md border p-3">
-					<div className="mb-2 flex items-baseline justify-between gap-2">
-						<span className="text-fg text-sm font-medium">Categories</span>
-						<span className="text-muted text-xs">
-							{formatCategoryTags(displayCategoryIds, categoryMap, displayPrimary)}
-						</span>
+				<div className="border-line bg-surface mb-4 rounded-md border px-3 py-2">
+					<div
+						className={cn(
+							'flex flex-col gap-2',
+							editingCategories
+								? 'sm:grid sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:items-start sm:gap-3'
+								: 'sm:grid sm:grid-cols-[auto_minmax(0,1fr)] sm:items-start sm:gap-3'
+						)}
+					>
+						<div className="sm:pt-0.5">
+							<span className="text-fg text-sm font-medium">Categories</span>
+							<p className="text-muted text-[10px] leading-tight">
+								{displayCategoryIds.length}/{MAX_EXPENSE_CATEGORIES} · star = primary
+							</p>
+						</div>
+						<div
+							className={cn(
+								'grid grid-cols-2 gap-1 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6',
+								(!canEdit || updateTxn.isPending) && 'pointer-events-none opacity-60'
+							)}
+							role="group"
+							aria-label="Expense categories"
+						>
+							{categoryOptions.length === 0 ? (
+								<p className="text-muted col-span-full px-0.5 py-1 text-xs">
+									No expense categories.
+								</p>
+							) : (
+								categoryOptions.map((opt) => {
+									const id = Number(opt.value);
+									const checked = displayCategoryIds.map(Number).includes(id);
+									const isPrimary = checked && Number(displayPrimary) === id;
+									const atCap = !checked && displayCategoryIds.length >= MAX_EXPENSE_CATEGORIES;
+									return (
+										<label
+											key={opt.value}
+											className={cn(
+												'flex cursor-pointer items-center gap-1.5 rounded-sm border px-1.5 py-1 text-xs',
+												checked
+													? 'border-primary bg-primary/12 text-primary'
+													: 'border-line text-muted',
+												atCap && 'opacity-40'
+											)}
+										>
+											<input
+												type="checkbox"
+												className="accent-primary"
+												checked={checked}
+												disabled={!canEdit || updateTxn.isPending || atCap}
+												onChange={() => toggleHeaderCategory(id)}
+											/>
+											<span className="text-fg min-w-0 flex-1 truncate">{opt.label}</span>
+											{checked && (
+												<button
+													type="button"
+													className={cn(
+														'text-muted hover:text-primary -mr-0.5 shrink-0 rounded p-0.5',
+														isPrimary && 'text-primary'
+													)}
+													title={isPrimary ? 'Primary category' : 'Set as primary'}
+													aria-label={isPrimary ? 'Primary category' : 'Set as primary'}
+													onClick={(e) => {
+														e.preventDefault();
+														setHeaderPrimary(id);
+													}}
+												>
+													<Star size={12} fill={isPrimary ? 'currentColor' : 'none'} />
+												</button>
+											)}
+										</label>
+									);
+								})
+							)}
+						</div>
 					</div>
-					<CategoryMultiSelect
-						options={categoryOptions}
-						value={displayCategoryIds}
-						primaryId={displayPrimary}
-						max={MAX_EXPENSE_CATEGORIES}
-						disabled={!canEdit || updateTxn.isPending}
-						onChange={({ ids, primaryId }) => {
-							setCategoryDraftIds(ids);
-							setCategoryDraftPrimary(primaryId);
-						}}
-					/>
 					{editingCategories && (
-						<div className="mt-2 flex justify-end gap-2">
+						<div className="flex justify-end gap-2">
 							<Button
 								variant="secondary"
 								size="sm"
@@ -458,7 +531,7 @@ export default function TransactionDetailPage() {
 								Cancel
 							</Button>
 							<Button size="sm" loading={updateTxn.isPending} onClick={saveHeaderCategories}>
-								Save categories
+								Save
 							</Button>
 						</div>
 					)}

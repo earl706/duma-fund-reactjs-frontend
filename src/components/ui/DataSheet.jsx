@@ -26,11 +26,23 @@ function StatusDot({ status }) {
 
 const OVERLAY_PAD = 8;
 const OVERLAY_ESTIMATE = 240;
+const ATTACH_RESERVE = 240;
+const BOTTOM_ROWS_FLIP = 8;
 
-/** Category (and similar) popovers must leave the table so later rows cannot paint over them. */
-function SheetOverlay({ anchor, overlayRef, minWidth = 224, zIndex = 70, onMouseDown, children }) {
+/** Category / title-hint popovers leave the table so later rows cannot paint over them. */
+function SheetOverlay({
+	anchor,
+	overlayRef,
+	minWidth = 224,
+	zIndex = 70,
+	placement = 'cover',
+	preferAbove = false,
+	onMouseDown,
+	children
+}) {
 	const [box, setBox] = useState(null);
 	const nodeRef = useRef(null);
+	const attach = placement === 'attach';
 
 	const setNode = (el) => {
 		nodeRef.current = el;
@@ -45,12 +57,26 @@ function SheetOverlay({ anchor, overlayRef, minWidth = 224, zIndex = 70, onMouse
 		const viewH = window.innerHeight;
 		const width = Math.min(Math.max(rect.width, minWidth), viewW - OVERLAY_PAD * 2);
 		const left = Math.min(Math.max(rect.left, OVERLAY_PAD), viewW - width - OVERLAY_PAD);
-		const height = nodeRef.current?.offsetHeight || OVERLAY_ESTIMATE;
-		const spaceBelow = viewH - rect.top - OVERLAY_PAD;
-		const spaceAbove = rect.bottom - OVERLAY_PAD;
-		const flipUp = height > spaceBelow && spaceAbove > spaceBelow;
-		let top = flipUp ? rect.bottom - height : rect.top;
-		const maxH = viewH - OVERLAY_PAD * 2;
+		const measured = nodeRef.current?.offsetHeight || 0;
+		const height = measured || (attach ? ATTACH_RESERVE : OVERLAY_ESTIMATE);
+		const gap = attach ? 4 : 0;
+		const spaceBelow = attach
+			? viewH - rect.bottom - OVERLAY_PAD
+			: viewH - rect.top - OVERLAY_PAD;
+		const spaceAbove = attach ? rect.top - OVERLAY_PAD : rect.bottom - OVERLAY_PAD;
+		const flipUp =
+			(preferAbove && spaceAbove >= ATTACH_RESERVE) ||
+			(height > spaceBelow && spaceAbove > spaceBelow);
+		const maxH = attach
+			? Math.max(OVERLAY_PAD, flipUp ? spaceAbove : spaceBelow)
+			: viewH - OVERLAY_PAD * 2;
+		let top = attach
+			? flipUp
+				? rect.top - Math.min(height, maxH) - gap
+				: rect.bottom + gap
+			: flipUp
+				? rect.bottom - height
+				: rect.top;
 		if (top < OVERLAY_PAD) top = OVERLAY_PAD;
 		if (top + height > viewH - OVERLAY_PAD)
 			top = Math.max(OVERLAY_PAD, viewH - height - OVERLAY_PAD);
@@ -66,7 +92,7 @@ function SheetOverlay({ anchor, overlayRef, minWidth = 224, zIndex = 70, onMouse
 			}
 			return { top, left, width, maxHeight: maxH };
 		});
-	}, [anchor, minWidth]);
+	}, [anchor, attach, minWidth, preferAbove]);
 
 	useLayoutEffect(() => {
 		if (!anchor) {
@@ -84,11 +110,24 @@ function SheetOverlay({ anchor, overlayRef, minWidth = 224, zIndex = 70, onMouse
 		};
 	}, [anchor, place]);
 
+	useLayoutEffect(() => {
+		const node = nodeRef.current;
+		if (!node || typeof ResizeObserver === 'undefined') return;
+		const ro = new ResizeObserver(place);
+		ro.observe(node);
+		return () => ro.disconnect();
+	}, [box, place]);
+
 	if (!box || typeof document === 'undefined') return null;
 	return createPortal(
 		<div
 			ref={setNode}
-			className="border-primary bg-surface fixed flex flex-col overflow-hidden border shadow-lg"
+			className={cn(
+				'fixed flex flex-col',
+				attach
+					? 'overflow-auto'
+					: 'border-primary bg-surface overflow-hidden border shadow-lg'
+			)}
 			style={{
 				top: box.top,
 				left: box.left,
@@ -116,8 +155,9 @@ function SheetOverlay({ anchor, overlayRef, minWidth = 224, zIndex = 70, onMouse
  * Column type `multi-select`: checkbox list (expense categories). Commit sends
  * `{ id, field, value, patch }` from `col.buildPatch(ids, primaryId)`.
  * Column type `actions`: `info` / `duplicate` / `delete` icon buttons.
- * Expense category editor is portaled to document.body so later table rows
- * cannot paint over it. Opens upward when the cell is near the viewport bottom.
+ * Expense category editor and title purchase-hint are portaled to
+ * document.body so later table rows and the add-row footer cannot paint
+ * over them. Last eight rows (and cells with no room below) open upward.
  */
 export function DataSheet({
 	rows,
@@ -327,6 +367,10 @@ export function DataSheet({
 		if (!el) return;
 		el.focus();
 		if (el.select) el.select();
+	}, [edit]);
+
+	useEffect(() => {
+		if (!edit) setOverlayAnchor(null);
 	}, [edit]);
 
 	const startEdit = (row, field) => {
@@ -762,11 +806,14 @@ export function DataSheet({
 											const isCategoryOverlay =
 												col.type === 'multi-select' ||
 												(col.type === 'txn-category' && row.type === 'expense');
+											const isTitleHint = Boolean(col.purchaseHint && inputType === 'text');
+											const usesOverlay = isCategoryOverlay || isTitleHint;
+											const preferAbove = rowIndex(row.id) >= rows.length - BOTTOM_ROWS_FLIP;
 
 											return (
 												<td
 													key={col.key}
-													ref={isCategoryOverlay ? setOverlayAnchor : undefined}
+													ref={usesOverlay ? setOverlayAnchor : undefined}
 													className={cn('relative p-0', col.className)}
 												>
 													{isCategoryOverlay ? (
@@ -775,6 +822,7 @@ export function DataSheet({
 															<SheetOverlay
 																anchor={overlayAnchor}
 																overlayRef={editorRef}
+																preferAbove={preferAbove}
 																onMouseDown={() => {
 																	skipBlurCancel.current = true;
 																}}
@@ -865,15 +913,25 @@ export function DataSheet({
 																onKeyDown={onKeyDown}
 																onBlur={onBlur}
 															/>
-															{col.purchaseHint && inputType === 'text' && (
-																<div className="absolute top-full left-0 z-30 min-w-[18rem]">
+															{isTitleHint && (
+																<SheetOverlay
+																	anchor={overlayAnchor}
+																	overlayRef={editorRef}
+																	placement="attach"
+																	preferAbove={preferAbove}
+																	minWidth={288}
+																	onMouseDown={() => {
+																		skipBlurCancel.current = true;
+																	}}
+																>
 																	<PurchaseHint
 																		query={draft}
 																		onInteractStart={() => {
 																			skipBlurCancel.current = true;
 																		}}
+																		className="mt-0 w-full max-w-none"
 																	/>
-																</div>
+																</SheetOverlay>
 															)}
 														</>
 													)}
