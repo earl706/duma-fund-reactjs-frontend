@@ -21,8 +21,12 @@ function applySession(data) {
 			error: null
 		};
 	}
-	if (!data.access || !data.user) {
-		throw new Error('Sign-in did not return a session.');
+	if (!data?.access || !data?.user) {
+		throw new Error(
+			isMobileApp()
+				? 'Sign-in did not return a session. Rebuild iOS so the app uses this Mac :8000.'
+				: 'Sign-in did not return a session.'
+		);
 	}
 	authGeneration += 1;
 	tokenStore.set({ access: data.access, refresh: data.refresh });
@@ -39,7 +43,7 @@ function applySession(data) {
 
 function networkLoginMessage() {
 	return isMobileApp()
-		? 'Could not reach the server. Keep DumaFund open on your Mac and stay on the same Wi-Fi.'
+		? 'Could not reach the server. Keep runserver or DumaFund.app on :8000 and stay on the same Wi-Fi.'
 		: 'Could not reach the server. Check your connection and try again.';
 }
 
@@ -76,7 +80,7 @@ export const useAuthStore = create((set, get) => ({
 			set(applySession(data));
 			return data.user;
 		} catch (err) {
-			if (err.message === 'Sign-in did not return a session.') {
+			if (String(err.message || '').startsWith('Sign-in did not return a session.')) {
 				set({ status: 'unauthenticated', error: err.message });
 				throw err;
 			}
