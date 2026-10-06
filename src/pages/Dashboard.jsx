@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { format, parseISO, subDays } from 'date-fns';
+import { format, parseISO } from 'date-fns';
 import { useQueryClient } from '@tanstack/react-query';
 
 import { isMobileApp } from '../lib/desktop';
@@ -34,15 +34,22 @@ function formatRangeLabel(start, end) {
 
 function chartWindow(period, start, end) {
 	if (!start || !end) return null;
-	if (period === 'day') {
-		return {
-			grain: 'day',
-			start: format(subDays(parseISO(end), 6), 'yyyy-MM-dd'),
-			end,
-			include_archived: '0'
-		};
-	}
-	return { grain: 'day', start, end, include_archived: '0' };
+	return {
+		grain: Number(period) === 120 ? 'week' : 'day',
+		start,
+		end,
+		include_archived: '0'
+	};
+}
+
+function flowTotals(totals) {
+	const income = Number(totals?.income || 0);
+	const expense = Number(totals?.expense || 0);
+	const transferIn = Number(totals?.transfer_in || 0);
+	const transferOut = Number(totals?.transfer_out || 0);
+	const moneyIn = income + transferIn;
+	const moneyOut = expense + transferOut;
+	return { moneyIn, moneyOut, net: moneyIn - moneyOut };
 }
 
 function rowMatchesChip(row, chipId) {
@@ -57,7 +64,7 @@ export default function DashboardPage() {
 	const mobile = isMobileApp();
 	const canEdit = useCanEditLedger();
 	const name = user?.full_name?.split(' ')[0] || 'there';
-	const [period, setPeriod] = useState('week');
+	const [period, setPeriod] = useState('28');
 	const [selectedChip, setSelectedChip] = useState(null);
 	const [scanOpen, setScanOpen] = useState(false);
 
@@ -102,30 +109,45 @@ export default function DashboardPage() {
 	}, [txnPage, selectedChip]);
 
 	const barRows = useMemo(() => {
-		const cats = data?.categories || [];
-		const denom = cats.reduce((sum, row) => sum + Number(row.amount || 0), 0);
+		const merged = [];
+		const byName = new Map();
+		for (const row of data?.categories || []) {
+			const amount = Number(row.amount || 0);
+			if (amount <= 0) continue;
+			const name = row.name || 'Uncategorized';
+			const key = name.toLowerCase();
+			const existing = byName.get(key);
+			if (existing) {
+				existing.amount += amount;
+			} else {
+				const next = { id: row.id, name, amount };
+				byName.set(key, next);
+				merged.push(next);
+			}
+		}
+		const denom = merged.reduce((sum, row) => sum + row.amount, 0);
 		if (denom <= 0) return [];
-		return cats
-			.map((row) => ({
-				id: row.id,
-				name: row.name,
-				amount: Number(row.amount || 0),
-				percent: Math.round((Number(row.amount || 0) / denom) * 100)
-			}))
-			.filter((row) => row.amount > 0);
+		return merged.map((row) => ({
+			...row,
+			percent: Math.round((row.amount / denom) * 100)
+		}));
 	}, [data]);
 
 	const chartPoints = useMemo(() => {
 		const points = series?.points || [];
-		const month = period === 'month';
+		const weekly = Number(period) === 120;
+		const compact = points.length <= 7;
 		return points.map((row) => {
 			const d = parseISO(row.period);
 			return {
-				label: month ? format(d, 'd') : format(d, 'EEE'),
-				spend: Number(row.txn_spend || 0)
+				label: weekly || !compact ? format(d, 'MMM d') : format(d, 'EEE'),
+				moneyIn: Number(row.money_in || 0),
+				moneyOut: Number(row.money_out || 0)
 			};
 		});
 	}, [series, period]);
+
+	const { net } = flowTotals(data?.totals);
 
 	const onPeriod = (next) => {
 		setPeriod(next);
@@ -145,6 +167,7 @@ export default function DashboardPage() {
 					rangeLabel={formatRangeLabel(data?.start, data?.end)}
 					income={data?.totals?.income ?? '0'}
 					expense={data?.totals?.expense ?? data?.balance_composition?.spent ?? '0'}
+					net={net}
 					chips={chips}
 					selectedChip={selectedChip}
 					onChip={setSelectedChip}

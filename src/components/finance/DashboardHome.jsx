@@ -1,9 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
-	Area,
-	AreaChart,
+	Bar,
+	BarChart,
 	CartesianGrid,
+	Cell,
+	Pie,
+	PieChart,
 	ResponsiveContainer,
 	Tooltip,
 	XAxis,
@@ -16,9 +19,10 @@ import { Button, EmptyState, LoadingScreen } from '../ui';
 import { TypeGlyph, amountToneClass, formatSignedAmount } from './txnDisplay';
 
 const PERIODS = [
-	{ value: 'day', label: 'Daily' },
-	{ value: 'week', label: 'Weekly' },
-	{ value: 'month', label: 'Monthly' }
+	{ value: '7', label: '7d', title: 'Past 7 days' },
+	{ value: '28', label: '28d', title: 'Past 28 days' },
+	{ value: '60', label: '60d', title: 'Past 60 days' },
+	{ value: '120', label: '120d', title: 'Past 120 days' }
 ];
 
 const CATEGORY_COLORS = [
@@ -37,9 +41,11 @@ function PeriodToggle({ period, onPeriod }) {
 				<button
 					key={g.value}
 					type="button"
+					title={g.title}
+					aria-label={g.title}
 					onClick={() => onPeriod(g.value)}
 					className={cn(
-						'h-8 cursor-pointer rounded-full px-3 text-sm font-medium transition-colors',
+						'h-8 cursor-pointer rounded-full px-2.5 text-sm font-medium transition-colors',
 						period === g.value ? 'bg-primary text-primary-fg' : 'text-muted hover:text-fg'
 					)}
 				>
@@ -50,61 +56,89 @@ function PeriodToggle({ period, onPeriod }) {
 	);
 }
 
-function SpendChart({ points, loading }) {
+function tooltipStyle() {
+	return {
+		background: 'var(--surface)',
+		border: '1px solid var(--line)',
+		borderRadius: 8,
+		color: 'var(--fg)',
+		fontSize: 12
+	};
+}
+
+function formatNet(value) {
+	const amount = Number(value);
+	if (!Number.isFinite(amount)) return '—';
+	const formatted = formatCost(Math.abs(amount));
+	if (formatted === '—') return formatted;
+	if (amount > 0) return `+${formatted}`;
+	if (amount < 0) return `−${formatted}`;
+	return formatted;
+}
+
+function netToneClass(value) {
+	const amount = Number(value);
+	if (amount > 0) return 'text-success';
+	if (amount < 0) return 'text-danger';
+	return 'text-fg';
+}
+
+function CashFlowChart({ points, loading }) {
 	if (loading) return <LoadingScreen />;
 	if (!points.length) {
 		return (
 			<p className="text-muted flex h-full min-h-0 items-center justify-center text-sm">
-				No expense activity in this range.
+				No cash flow in this range.
 			</p>
 		);
 	}
 
+	const tickInterval = points.length <= 8 ? 0 : Math.ceil(points.length / 7) - 1;
+
 	return (
 		<div className="h-full min-h-0 w-full">
 			<ResponsiveContainer width="100%" height="100%">
-				<AreaChart data={points} margin={{ top: 12, right: 8, left: 0, bottom: 0 }}>
-					<defs>
-						<linearGradient id="homeSpendFill" x1="0" y1="0" x2="0" y2="1">
-							<stop offset="0%" stopColor="var(--primary)" stopOpacity={0.32} />
-							<stop offset="100%" stopColor="var(--primary)" stopOpacity={0} />
-						</linearGradient>
-					</defs>
+				<BarChart
+					data={points}
+					margin={{ top: 8, right: 4, left: 0, bottom: 0 }}
+					barCategoryGap="12%"
+				>
 					<CartesianGrid stroke="var(--line)" strokeDasharray="3 6" vertical={false} />
 					<XAxis
 						dataKey="label"
-						tick={{ fill: 'var(--muted)', fontSize: 11 }}
+						tick={{ fill: 'var(--muted)', fontSize: 10 }}
 						axisLine={false}
 						tickLine={false}
-						interval="preserveStartEnd"
+						interval={tickInterval}
+						minTickGap={8}
 					/>
 					<YAxis hide />
 					<Tooltip
-						contentStyle={{
-							background: 'var(--surface)',
-							border: '1px solid var(--line)',
-							borderRadius: 8,
-							color: 'var(--fg)',
-							fontSize: 12
-						}}
-						formatter={(value) => [formatCost(value), 'Expenses']}
+						cursor={{ fill: 'var(--surface-2)', fillOpacity: 0.6 }}
+						contentStyle={tooltipStyle()}
+						formatter={(value, name) => [formatCost(value), name]}
 					/>
-					<Area
-						type="monotone"
-						dataKey="spend"
-						stroke="var(--primary)"
-						strokeWidth={2.2}
-						fill="url(#homeSpendFill)"
-						dot={false}
-						activeDot={{ r: 5, fill: 'var(--primary)', stroke: 'var(--surface)', strokeWidth: 2 }}
+					<Bar
+						dataKey="moneyIn"
+						name="Money in"
+						stackId="flow"
+						fill="var(--success)"
+						maxBarSize={28}
 					/>
-				</AreaChart>
+					<Bar
+						dataKey="moneyOut"
+						name="Money out"
+						stackId="flow"
+						fill="var(--danger)"
+						maxBarSize={28}
+					/>
+				</BarChart>
 			</ResponsiveContainer>
 		</div>
 	);
 }
 
-function CategoryBars({ rows }) {
+function CategoryPie({ rows }) {
 	if (!rows.length) {
 		return (
 			<p className="text-muted flex h-full items-center justify-center text-sm">
@@ -113,28 +147,54 @@ function CategoryBars({ rows }) {
 		);
 	}
 
+	const data = rows.map((row, index) => ({
+		...row,
+		color: CATEGORY_COLORS[index % CATEGORY_COLORS.length]
+	}));
+
 	return (
-		<ul className="flex h-full min-h-0 flex-col justify-evenly gap-2">
-			{rows.map((row, index) => (
-				<li key={row.id ?? row.name}>
-					<div className="mb-1 flex items-baseline justify-between gap-2">
-						<p className="text-fg min-w-0 truncate text-sm font-medium">{row.name}</p>
-						<p className="text-fg shrink-0 text-sm font-semibold tabular-nums">
+		<div className="flex h-full min-h-0 items-center gap-3">
+			<div className="h-full min-h-0 min-w-[7.5rem] flex-1">
+				<ResponsiveContainer width="100%" height="100%">
+					<PieChart>
+						<Pie
+							data={data}
+							dataKey="amount"
+							nameKey="name"
+							innerRadius="58%"
+							outerRadius="88%"
+							paddingAngle={2}
+							stroke="var(--surface)"
+							strokeWidth={1}
+						>
+							{data.map((row) => (
+								<Cell key={row.id ?? `slice-${row.name}`} fill={row.color} />
+							))}
+						</Pie>
+						<Tooltip
+							contentStyle={tooltipStyle()}
+							formatter={(value, name) => [formatCost(value), name]}
+						/>
+					</PieChart>
+				</ResponsiveContainer>
+			</div>
+			<ul className="flex min-h-0 w-[52%] shrink-0 flex-col justify-center gap-1.5 overflow-auto">
+				{data.map((row) => (
+					<li
+						key={row.id ?? `legend-${row.name}`}
+						className="flex items-baseline justify-between gap-2"
+					>
+						<p className="text-fg flex min-w-0 items-center gap-1.5 text-sm font-medium">
+							<span className="h-2 w-2 shrink-0 rounded-full" style={{ background: row.color }} />
+							<span className="truncate">{row.name}</span>
+						</p>
+						<p className="text-fg shrink-0 text-xs font-semibold tabular-nums">
 							{row.percent}% · {formatCost(row.amount)}
 						</p>
-					</div>
-					<div className="bg-surface-2 flex h-2 overflow-hidden rounded-full">
-						<div
-							className="h-full rounded-full"
-							style={{
-								width: `${Math.max(row.percent, 2)}%`,
-								background: CATEGORY_COLORS[index % CATEGORY_COLORS.length]
-							}}
-						/>
-					</div>
-				</li>
-			))}
-		</ul>
+					</li>
+				))}
+			</ul>
+		</div>
 	);
 }
 
@@ -270,7 +330,7 @@ function DashboardPane({
 function AnalyticsPane({
 	period,
 	onPeriod,
-	expense,
+	net,
 	chartPoints,
 	chartLoading,
 	barRows,
@@ -282,7 +342,7 @@ function AnalyticsPane({
 			<div className="flex shrink-0 items-center justify-between gap-3">
 				<div>
 					<h2 className="text-fg text-base font-semibold">Analytics</h2>
-					<p className="text-muted text-xs">Expense trend and category mix</p>
+					<p className="text-muted text-xs">Money in vs out and category mix</p>
 				</div>
 				<PeriodToggle period={period} onPeriod={onPeriod} />
 			</div>
@@ -298,16 +358,32 @@ function AnalyticsPane({
 			) : (
 				<div className="grid min-h-0 flex-1 grid-rows-2 gap-3">
 					<div className="border-line bg-surface flex min-h-0 flex-col rounded-lg border p-4">
-						<p className="text-muted text-xs font-medium tracking-wide uppercase">Total expenses</p>
-						<p className="text-fg text-xl font-semibold tabular-nums">{formatCost(expense)}</p>
+						<div className="flex shrink-0 items-start justify-between gap-3">
+							<div>
+								<p className="text-muted text-xs font-medium tracking-wide uppercase">Net</p>
+								<p className={cn('text-xl font-semibold tabular-nums', netToneClass(net))}>
+									{formatNet(net)}
+								</p>
+							</div>
+							<div className="text-muted flex gap-3 pt-1 text-[11px] font-medium">
+								<span className="flex items-center gap-1.5">
+									<span className="bg-success h-2 w-2 rounded-full" />
+									In
+								</span>
+								<span className="flex items-center gap-1.5">
+									<span className="bg-danger h-2 w-2 rounded-full" />
+									Out
+								</span>
+							</div>
+						</div>
 						<div className="mt-1 min-h-0 flex-1">
-							<SpendChart points={chartPoints} loading={chartLoading} />
+							<CashFlowChart points={chartPoints} loading={chartLoading} />
 						</div>
 					</div>
 					<div className="border-line bg-surface flex min-h-0 flex-col rounded-lg border p-4">
 						<p className="text-fg mb-2 text-sm font-semibold">Breakdown</p>
 						<div className="min-h-0 flex-1">
-							<CategoryBars rows={barRows} />
+							<CategoryPie rows={barRows} />
 						</div>
 					</div>
 				</div>
@@ -319,7 +395,9 @@ function AnalyticsPane({
 function PagerPane({ swiping, children }) {
 	return (
 		<section className="bg-bg min-h-0 snap-start snap-always overflow-hidden">
-			<div className={cn('home-pager-pane h-full min-h-0', swiping && 'is-swiping')}>{children}</div>
+			<div className={cn('home-pager-pane h-full min-h-0', swiping && 'is-swiping')}>
+				{children}
+			</div>
 		</section>
 	);
 }
@@ -358,6 +436,7 @@ export function DashboardHome({
 	rangeLabel,
 	income,
 	expense,
+	net,
 	chips,
 	selectedChip,
 	onChip,
@@ -431,7 +510,7 @@ export function DashboardHome({
 		<AnalyticsPane
 			period={period}
 			onPeriod={onPeriod}
-			expense={expense}
+			net={net}
 			chartPoints={chartPoints}
 			chartLoading={chartLoading}
 			barRows={barRows}
