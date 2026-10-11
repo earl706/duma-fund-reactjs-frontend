@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { Link } from 'react-router-dom';
 import { CopyPlus, ExternalLink, Info, Plus, Trash2 } from 'lucide-react';
 
-import { cn } from '../../lib/format';
+import { cn, formatCost } from '../../lib/format';
 import { CategoryMultiSelect } from '../finance/CategoryMultiSelect';
 import { PurchaseHint } from '../finance/PurchaseHint';
 import { Button } from './Button';
@@ -12,6 +12,41 @@ const STATUS_DOT = {
 	active: 'bg-primary',
 	archived: 'bg-muted'
 };
+
+function cashFlowDelta(row) {
+	const amount = Number(row?.amount);
+	if (!Number.isFinite(amount)) return null;
+	if (row.type === 'income' || row.type === 'transfer_in') return amount;
+	if (row.type === 'expense' || row.type === 'transfer_out') return -amount;
+	return null;
+}
+
+function selectionCashFlow(rows, selectedIds) {
+	let net = 0;
+	let counted = 0;
+	for (const row of rows) {
+		if (!selectedIds.has(row.id)) continue;
+		const delta = cashFlowDelta(row);
+		if (delta == null) continue;
+		net += delta;
+		counted += 1;
+	}
+	if (!counted) return null;
+	return Math.round(net * 100) / 100;
+}
+
+function formatSelectionNet(net) {
+	const formatted = formatCost(Math.abs(net));
+	if (formatted === '—') return formatted;
+	if (net === 0) return formatted;
+	return `${net > 0 ? '+' : '−'}${formatted}`;
+}
+
+function selectionNetTone(net) {
+	if (net > 0) return 'text-success';
+	if (net < 0) return 'text-danger';
+	return 'text-muted';
+}
 
 function StatusDot({ status }) {
 	const tone = STATUS_DOT[status] || 'bg-muted';
@@ -60,9 +95,7 @@ function SheetOverlay({
 		const measured = nodeRef.current?.offsetHeight || 0;
 		const height = measured || (attach ? ATTACH_RESERVE : OVERLAY_ESTIMATE);
 		const gap = attach ? 4 : 0;
-		const spaceBelow = attach
-			? viewH - rect.bottom - OVERLAY_PAD
-			: viewH - rect.top - OVERLAY_PAD;
+		const spaceBelow = attach ? viewH - rect.bottom - OVERLAY_PAD : viewH - rect.top - OVERLAY_PAD;
 		const spaceAbove = attach ? rect.top - OVERLAY_PAD : rect.bottom - OVERLAY_PAD;
 		const flipUp =
 			(preferAbove && spaceAbove >= ATTACH_RESERVE) ||
@@ -124,9 +157,7 @@ function SheetOverlay({
 			ref={setNode}
 			className={cn(
 				'fixed flex flex-col',
-				attach
-					? 'overflow-auto'
-					: 'border-primary bg-surface overflow-hidden border shadow-lg'
+				attach ? 'overflow-auto' : 'border-primary bg-surface overflow-hidden border shadow-lg'
 			)}
 			style={{
 				top: box.top,
@@ -148,7 +179,8 @@ function SheetOverlay({
  * Click a cell to select it; Shift+click extends the selection. Drag the fill
  * handle (bottom-right dot) vertically to copy the anchor cell's value down/up
  * the same column. Double-click to edit a single cell; Enter commits; Escape
- * cancels. Row checkboxes (optional) are for bulk delete only.
+ * cancels. Row checkboxes (optional) support bulk delete and, when rows have
+ * amount + type, a signed cash-flow net of the selection.
  *
  * Column type `qty-unit`: number + unit select in one cell. Commit sends
  * `{ id, field, value, patch: { [field]: qty, [unitKey]: unit } }`.
@@ -313,6 +345,7 @@ export function DataSheet({
 
 	const allSelected = rows.length > 0 && rows.every((r) => selectedIds.has(r.id));
 	const someSelected = rows.some((r) => selectedIds.has(r.id));
+	const selectedNet = useMemo(() => selectionCashFlow(rows, selectedIds), [rows, selectedIds]);
 
 	const toggleRow = (id) => {
 		setSelectedIds((prev) => {
@@ -647,6 +680,13 @@ export function DataSheet({
 			{sheetSelectable && selectedIds.size > 0 && (
 				<div className="border-line bg-surface-2 flex flex-wrap items-center gap-2 border-b px-2 py-1.5">
 					<span className={cn('text-muted', cellText)}>{selectedIds.size} selected</span>
+					{selectedNet != null && (
+						<span
+							className={cn('font-semibold tabular-nums', cellText, selectionNetTone(selectedNet))}
+						>
+							{formatSelectionNet(selectedNet)}
+						</span>
+					)}
 					{onBulkDelete && (
 						<Button
 							variant="danger"
