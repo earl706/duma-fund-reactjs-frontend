@@ -63,6 +63,38 @@ const OVERLAY_PAD = 8;
 const OVERLAY_ESTIMATE = 240;
 const ATTACH_RESERVE = 240;
 const BOTTOM_ROWS_FLIP = 8;
+const NON_SORTABLE_TYPES = new Set(['actions', 'action-link']);
+
+function columnSortKey(col) {
+	if (!col || col.sortable === false || NON_SORTABLE_TYPES.has(col.type)) return null;
+	return col.sortKey || col.key || null;
+}
+
+function parseOrdering(ordering) {
+	if (!ordering) return { key: '', dir: null };
+	if (String(ordering).startsWith('-')) return { key: ordering.slice(1), dir: 'desc' };
+	return { key: ordering, dir: 'asc' };
+}
+
+/** none/other → asc → desc → defaultOrdering (default-desc columns flip to asc first). */
+function nextOrdering(current, sortKey, defaultOrdering = '') {
+	const asc = sortKey;
+	const desc = `-${sortKey}`;
+	if (current === asc) return desc;
+	if (current === desc) return current === defaultOrdering ? asc : defaultOrdering;
+	return asc;
+}
+
+function SortIndicator({ direction }) {
+	return (
+		<span className="inline-flex shrink-0 flex-col leading-none" aria-hidden>
+			<span className={cn('text-[7px]', direction === 'asc' ? 'text-fg' : 'text-muted/35')}>▲</span>
+			<span className={cn('-mt-px text-[7px]', direction === 'desc' ? 'text-fg' : 'text-muted/35')}>
+				▼
+			</span>
+		</span>
+	);
+}
 
 /** Category / title-hint popovers leave the table so later rows cannot paint over them. */
 function SheetOverlay({
@@ -190,6 +222,10 @@ function SheetOverlay({
  * Expense category editor and title purchase-hint are portaled to
  * document.body so later table rows and the add-row footer cannot paint
  * over them. Last eight rows (and cells with no room below) open upward.
+ * Pass `ordering` + `onOrderingChange` to make data-column headers sortable
+ * (Wikipedia-style arrows; third click returns to `defaultOrdering`).
+ * Set `col.sortable = false` or use actions/action-link to skip a column;
+ * `col.sortKey` overrides the API ordering field.
  */
 export function DataSheet({
 	rows,
@@ -208,7 +244,10 @@ export function DataSheet({
 	emptyMessage = 'No rows yet. Add a row to get started.',
 	rowLabel = (row) => row.title || 'row',
 	compact = true,
-	readOnly = false
+	readOnly = false,
+	ordering = '',
+	defaultOrdering = '',
+	onOrderingChange
 }) {
 	const [edit, setEdit] = useState(null);
 	const [draft, setDraft] = useState('');
@@ -724,21 +763,53 @@ export function DataSheet({
 								/>
 							</th>
 						)}
-						{columns.map((col) => (
-							<th
-								key={col.key}
-								scope="col"
-								className={cn(
-									'text-muted truncate font-semibold tracking-wide uppercase',
-									headText,
-									headPad,
-									col.align === 'right' && 'text-right',
-									col.className
-								)}
-							>
-								{col.label}
-							</th>
-						))}
+						{columns.map((col) => {
+							const sortKey = onOrderingChange ? columnSortKey(col) : null;
+							const { key: activeKey, dir } = parseOrdering(ordering);
+							const active = Boolean(sortKey && activeKey === sortKey);
+							const ariaSort = !sortKey
+								? undefined
+								: active
+									? dir === 'desc'
+										? 'descending'
+										: 'ascending'
+									: 'none';
+							const sortLabel = col.label || col.key;
+							return (
+								<th
+									key={col.key}
+									scope="col"
+									aria-sort={ariaSort}
+									className={cn(
+										'text-muted font-semibold tracking-wide uppercase',
+										headText,
+										headPad,
+										col.align === 'right' && 'text-right',
+										col.className
+									)}
+								>
+									{sortKey ? (
+										<button
+											type="button"
+											className={cn(
+												'inline-flex max-w-full cursor-pointer items-center gap-0.5 select-none',
+												col.align === 'right' && 'ml-auto',
+												active ? 'text-fg' : 'hover:text-fg'
+											)}
+											onClick={() =>
+												onOrderingChange(nextOrdering(ordering, sortKey, defaultOrdering))
+											}
+											aria-label={`Sort by ${sortLabel}`}
+										>
+											{col.label ? <span className="min-w-0 truncate">{col.label}</span> : null}
+											<SortIndicator direction={active ? dir : null} />
+										</button>
+									) : (
+										<span className="truncate">{col.label}</span>
+									)}
+								</th>
+							);
+						})}
 					</tr>
 				</thead>
 				<tbody>

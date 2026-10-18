@@ -128,7 +128,7 @@ export function PurchaseHint({ query, onInteractStart, className = '' }) {
 				if (onInteractStart) e.preventDefault();
 			}}
 		>
-			<div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between md:gap-4">
+			<div className="flex flex-col gap-2 md:flex-col md:items-start md:justify-between md:gap-4">
 				<div className="w-full min-w-0 md:flex-1">
 					<div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
 						<span className="text-fg font-semibold">{primary.display_title}</span>
@@ -148,7 +148,7 @@ export function PurchaseHint({ query, onInteractStart, className = '' }) {
 					</details>
 				</div>
 				{isOwner && (
-					<div className="flex w-full flex-col gap-1.5 sm:flex-row md:w-auto md:shrink-0 md:flex-col">
+					<div className="flex w-full flex-col gap-1.5 sm:flex-row md:w-auto md:shrink-0">
 						<Button
 							variant="secondary"
 							size="sm"

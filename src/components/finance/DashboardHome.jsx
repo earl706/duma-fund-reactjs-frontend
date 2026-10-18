@@ -19,10 +19,10 @@ import { Button, EmptyState, LoadingScreen } from '../ui';
 import { TypeGlyph, amountToneClass, formatSignedAmount } from './txnDisplay';
 
 const PERIODS = [
-	{ value: '7', label: '7d', title: 'Past 7 days' },
-	{ value: '28', label: '28d', title: 'Past 28 days' },
-	{ value: '60', label: '60d', title: 'Past 60 days' },
-	{ value: '120', label: '120d', title: 'Past 120 days' }
+	{ value: '7', label: '7', title: 'Past 7 days' },
+	{ value: '28', label: '28', title: 'Past 28 days' },
+	{ value: '60', label: '60', title: 'Past 60 days' },
+	{ value: '120', label: '120', title: 'Past 120 days' }
 ];
 
 const CATEGORY_COLORS = [
@@ -45,7 +45,7 @@ function PeriodToggle({ period, onPeriod }) {
 					aria-label={g.title}
 					onClick={() => onPeriod(g.value)}
 					className={cn(
-						'h-8 cursor-pointer rounded-full px-2.5 text-sm font-medium transition-colors',
+						'text-xxs h-8 cursor-pointer rounded-full px-2.5 font-medium transition-colors',
 						period === g.value ? 'bg-primary text-primary-fg' : 'text-muted hover:text-fg'
 					)}
 				>
@@ -339,14 +339,6 @@ function AnalyticsPane({
 }) {
 	return (
 		<div className="flex h-full min-h-0 flex-col gap-3 overflow-hidden">
-			<div className="flex shrink-0 items-center justify-between gap-3">
-				<div>
-					<h2 className="text-fg text-base font-semibold">Analytics</h2>
-					<p className="text-muted text-xs">Money in vs out and category mix</p>
-				</div>
-				<PeriodToggle period={period} onPeriod={onPeriod} />
-			</div>
-
 			{breakdownError ? (
 				<EmptyState
 					icon={LayoutDashboard}
@@ -365,15 +357,8 @@ function AnalyticsPane({
 									{formatNet(net)}
 								</p>
 							</div>
-							<div className="text-muted flex gap-3 pt-1 text-[11px] font-medium">
-								<span className="flex items-center gap-1.5">
-									<span className="bg-success h-2 w-2 rounded-full" />
-									In
-								</span>
-								<span className="flex items-center gap-1.5">
-									<span className="bg-danger h-2 w-2 rounded-full" />
-									Out
-								</span>
+							<div className="text-muted flex flex-col gap-3 pt-1 text-[11px] font-medium">
+								<PeriodToggle period={period} onPeriod={onPeriod} />
 							</div>
 						</div>
 						<div className="mt-1 min-h-0 flex-1">

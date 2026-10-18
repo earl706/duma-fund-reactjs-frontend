@@ -18,6 +18,7 @@ import { Button, Input, LoadingScreen, Modal, Select } from '../ui';
 import { PurchaseHint } from './PurchaseHint';
 import { ReceiptCropper } from './ReceiptCropper';
 import { CategoryMultiSelect, MAX_EXPENSE_CATEGORIES } from './CategoryMultiSelect';
+import { amountToneClass, formatSignedAmount } from './txnDisplay';
 
 const ACCEPT_IMAGES = 'image/jpeg,image/png,image/webp,image/*';
 const TABLE_INPUT = 'border-line bg-surface text-fg w-full rounded-sm border px-2 py-1.5 text-sm';
@@ -32,6 +33,54 @@ function todayISO() {
 
 function updateRow(rows, key, field, value) {
 	return rows.map((row) => (row._key === key ? { ...row, [field]: value } : row));
+}
+
+function moneyTotal(values) {
+	const sum = values.reduce((acc, n) => acc + n, 0);
+	return Math.round(sum * 100) / 100;
+}
+
+function retailExpenseTotal(rows) {
+	return moneyTotal(
+		(rows || []).map((row) => {
+			const cost = Number(row.cost);
+			const qty = Number(row.quantity);
+			if (Number.isNaN(cost) || Number.isNaN(qty)) return 0;
+			return cost * qty;
+		})
+	);
+}
+
+function bankTypeTotal(entries, type) {
+	return moneyTotal(
+		(entries || [])
+			.filter((row) => row.txn_type === type)
+			.map((row) => {
+				const n = Number(row.amount);
+				return Number.isNaN(n) ? 0 : n;
+			})
+	);
+}
+
+function DraftTotals({ items, className }) {
+	const visible = items.filter((item) => item.show);
+	if (!visible.length) return null;
+	return (
+		<div
+			className={cn('flex flex-wrap items-center justify-end gap-x-4 gap-y-0.5', className)}
+			role="status"
+			aria-label="Draft totals"
+		>
+			{visible.map((item) => (
+				<p key={item.label} className="flex items-baseline gap-2">
+					<span className="text-muted text-[10px] font-semibold uppercase">{item.label}</span>
+					<span className={cn('text-sm font-semibold tabular-nums', amountToneClass(item.type))}>
+						{formatSignedAmount(item.amount, item.type)}
+					</span>
+				</p>
+			))}
+		</div>
+	);
 }
 
 function useObjectUrl(blob) {
@@ -769,6 +818,15 @@ function RetailDraftEditor({
 		: (effectiveHeaderIds[0] ?? null);
 
 	const setRow = (key, field, value) => onPatch({ rows: updateRow(draft.rows, key, field, value) });
+	const expenseTotal = retailExpenseTotal(draft.rows);
+	const totals = [
+		{
+			label: 'Expense total',
+			type: 'expense',
+			amount: expenseTotal,
+			show: draft.rows.length > 0
+		}
+	];
 
 	return (
 		<div className="space-y-4 pb-1">
@@ -869,6 +927,7 @@ function RetailDraftEditor({
 					</li>
 				))}
 			</ul>
+			<DraftTotals items={totals} className="md:hidden" />
 
 			<div className="border-line hidden overflow-x-auto rounded-md border md:block">
 				<table className="w-full min-w-[640px] table-fixed border-collapse text-sm">
@@ -957,6 +1016,15 @@ function RetailDraftEditor({
 							</Fragment>
 						))}
 					</tbody>
+					{totals.some((item) => item.show) && (
+						<tfoot>
+							<tr className="bg-surface-2 border-line border-t">
+								<td colSpan={5} className="px-2 py-2">
+									<DraftTotals items={totals} />
+								</td>
+							</tr>
+						</tfoot>
+					)}
 				</table>
 			</div>
 
@@ -1003,6 +1071,16 @@ function BankDraftEditor({
 			})
 		});
 	};
+
+	const entries = draft.bankEntries;
+	const totals = [
+		{
+			label: 'Income total',
+			type: 'income',
+			amount: bankTypeTotal(entries, 'income'),
+			show: entries.some((row) => row.txn_type === 'income')
+		}
+	];
 
 	return (
 		<div className="space-y-4 pb-1">
@@ -1105,6 +1183,7 @@ function BankDraftEditor({
 					</li>
 				))}
 			</ul>
+			<DraftTotals items={totals} className="md:hidden" />
 
 			<div className="border-line hidden overflow-x-auto rounded-md border md:block">
 				<table className="w-full min-w-[920px] table-fixed border-collapse text-sm">
@@ -1228,6 +1307,15 @@ function BankDraftEditor({
 							</Fragment>
 						))}
 					</tbody>
+					{totals.some((item) => item.show) && (
+						<tfoot>
+							<tr className="bg-surface-2 border-line border-t">
+								<td colSpan={7} className="px-2 py-2">
+									<DraftTotals items={totals} />
+								</td>
+							</tr>
+						</tfoot>
+					)}
 				</table>
 			</div>
 

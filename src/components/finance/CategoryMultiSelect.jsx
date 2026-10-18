@@ -7,7 +7,7 @@ export const MAX_EXPENSE_CATEGORIES = 5;
 /**
  * Multi-select for expense header categories (unordered labels, one primary).
  * `value` is the full selected id list; `primaryId` must be one of them.
- * Narrow screens use wrapping chips; md+ keeps the scrollable checklist.
+ * Compact auto-fill grid (2–5 columns) with a primary star on selected labels.
  */
 export function CategoryMultiSelect({
 	options = [],
@@ -55,68 +55,17 @@ export function CategoryMultiSelect({
 		emit([n, ...selected.filter((x) => x !== n)], n);
 	};
 
-	const chips = options.map((opt) => {
-		const id = Number(opt.value);
-		const checked = selected.includes(id);
-		const isPrimary = checked && primary === id;
-		const atCap = !checked && selected.length >= max;
-		return (
-			<span
-				key={opt.value}
-				className={cn(
-					'inline-flex items-center gap-1 rounded-full border px-2.5 py-1.5 text-xs font-medium',
-					checked ? 'border-primary bg-primary/12 text-primary' : 'border-line text-muted',
-					atCap && 'opacity-40'
-				)}
-			>
-				<button
-					type="button"
-					className="cursor-pointer"
-					disabled={disabled || atCap}
-					onClick={() => toggle(id)}
-				>
-					{opt.label}
-				</button>
-				{checked && (
-					<button
-						type="button"
-						className={cn(
-							'text-muted hover:text-primary -mr-0.5 rounded p-0.5',
-							isPrimary && 'text-primary'
-						)}
-						title={isPrimary ? 'Primary category' : 'Set as primary'}
-						aria-label={isPrimary ? 'Primary category' : 'Set as primary'}
-						onClick={() => setPrimary(id)}
-					>
-						<Star size={12} fill={isPrimary ? 'currentColor' : 'none'} />
-					</button>
-				)}
-			</span>
-		);
-	});
-
 	return (
 		<div
 			className={cn(disabled && 'pointer-events-none opacity-60', className)}
 			role="group"
 			aria-label="Expense categories"
 		>
-			<div className="flex max-h-28 flex-wrap content-start gap-1.5 overflow-y-auto md:hidden">
-				{options.length === 0 ? (
-					<p className="text-muted px-0.5 py-1 text-xs">No expense categories.</p>
-				) : (
-					chips
-				)}
-			</div>
-			<p className="text-muted mt-1 text-[10px] md:hidden">
-				{selected.length}/{max} · star = primary
-			</p>
-
-			<div className="border-line bg-surface hidden max-h-48 space-y-0.5 overflow-y-auto rounded-md border p-1.5 md:block">
-				{options.length === 0 ? (
-					<p className="text-muted px-1.5 py-1 text-xs">No expense categories.</p>
-				) : (
-					options.map((opt) => {
+			{options.length === 0 ? (
+				<p className="text-muted px-0.5 py-1 text-xs">No expense categories.</p>
+			) : (
+				<div className="grid max-h-36 grid-cols-[repeat(auto-fill,minmax(max(6.5rem,20%),1fr))] gap-1 overflow-y-auto">
+					{options.map((opt) => {
 						const id = Number(opt.value);
 						const checked = selected.includes(id);
 						const isPrimary = checked && primary === id;
@@ -125,13 +74,14 @@ export function CategoryMultiSelect({
 							<label
 								key={opt.value}
 								className={cn(
-									'hover:bg-surface-2 flex cursor-pointer items-center gap-2 rounded-sm px-1.5 py-1 text-xs',
+									'flex min-w-0 cursor-pointer items-center gap-1 rounded-sm border px-1.5 py-1 text-xs',
+									checked ? 'border-primary bg-primary/12 text-primary' : 'border-line text-muted',
 									atCap && 'opacity-40'
 								)}
 							>
 								<input
 									type="checkbox"
-									className="accent-primary"
+									className="accent-primary shrink-0"
 									checked={checked}
 									disabled={disabled || atCap}
 									onChange={() => toggle(id)}
@@ -141,7 +91,7 @@ export function CategoryMultiSelect({
 									<button
 										type="button"
 										className={cn(
-											'text-muted hover:text-primary shrink-0 rounded p-0.5',
+											'text-muted hover:text-primary -mr-0.5 shrink-0 rounded p-0.5',
 											isPrimary && 'text-primary'
 										)}
 										title={isPrimary ? 'Primary category' : 'Set as primary'}
@@ -156,12 +106,12 @@ export function CategoryMultiSelect({
 								)}
 							</label>
 						);
-					})
-				)}
-				<p className="text-muted px-1.5 pt-0.5 text-[10px]">
-					{selected.length}/{max} · star = primary
-				</p>
-			</div>
+					})}
+				</div>
+			)}
+			<p className="text-muted mt-1 text-[10px]">
+				{selected.length}/{max} · star = primary
+			</p>
 		</div>
 	);
 }

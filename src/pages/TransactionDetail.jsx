@@ -37,12 +37,7 @@ import {
 	RecordInfoModal
 } from '../components/ui';
 
-const SORT_OPTIONS = [
-	{ value: 'title', label: 'Title A–Z' },
-	{ value: '-title', label: 'Title Z–A' },
-	{ value: '-cost', label: 'Highest price' },
-	{ value: 'status', label: 'Status' }
-];
+const DEFAULT_ORDERING = 'title';
 
 const STATUS_OPTIONS = [
 	{ value: '', label: 'All statuses' },
@@ -127,7 +122,7 @@ export default function TransactionDetailPage() {
 		: (txn?.category ?? headerCategoryIds[0] ?? null);
 
 	const { search, setSearch, ordering, setOrdering, filters, setFilter, queryParams } =
-		useListControls({ defaultOrdering: 'title' });
+		useListControls({ defaultOrdering: DEFAULT_ORDERING });
 
 	const listParams = useMemo(() => {
 		const rest = { ...queryParams };
@@ -550,9 +545,6 @@ export default function TransactionDetailPage() {
 						search={search}
 						onSearchChange={setSearch}
 						searchPlaceholder="Search items…"
-						ordering={ordering}
-						onOrderingChange={setOrdering}
-						sortOptions={SORT_OPTIONS}
 						filters={[
 							{
 								key: 'status',
@@ -572,6 +564,9 @@ export default function TransactionDetailPage() {
 						<DataSheet
 							rows={items}
 							columns={columns}
+							ordering={ordering}
+							defaultOrdering={DEFAULT_ORDERING}
+							onOrderingChange={setOrdering}
 							onCommit={commitCell}
 							onAdd={canEdit ? addItem : undefined}
 							onRequestDelete={canEdit ? setDeleteTarget : undefined}

@@ -38,24 +38,7 @@ const TYPE_OPTIONS = [
 	{ value: 'transfer_out', label: 'Transfer out' }
 ];
 
-const SORT_OPTIONS = [
-	{ value: '-date_effective', label: 'Effective (newest)' },
-	{ value: 'date_effective', label: 'Effective (oldest)' },
-	{ value: '-date_created', label: 'Newest first' },
-	{ value: 'date_created', label: 'Oldest first' },
-	{ value: '-amount', label: 'Highest amount' },
-	{ value: 'title', label: 'Title A–Z' },
-	{ value: 'type', label: 'Type' },
-	{ value: 'status', label: 'Status' }
-];
-
-const STATUS_OPTIONS = [
-	{ value: '', label: 'All statuses' },
-	{ value: 'active', label: 'Active' },
-	{ value: 'archived', label: 'Archived' }
-];
-
-const TYPE_FILTER = [{ value: '', label: 'All types' }, ...TYPE_OPTIONS];
+const DEFAULT_ORDERING = '-date_effective';
 
 /** Display-only signed amount: + inflows, − outflows (unicode minus). */
 function formatSignedAmount(amount, type) {
@@ -131,7 +114,7 @@ export default function TransactionsPage() {
 
 	const { search, setSearch, ordering, setOrdering, filters, setFilter, queryParams } =
 		useListControls({
-			defaultOrdering: '-date_effective',
+			defaultOrdering: DEFAULT_ORDERING,
 			defaultFilters: mobile ? { status: 'active' } : {}
 		});
 
@@ -368,6 +351,7 @@ export default function TransactionsPage() {
 				expenseOptions: expenseSelectOptions,
 				incomeOptions: incomeSelectOptions,
 				className: 'w-[14%]',
+				sortKey: 'category__name',
 				getDisplay: (row) => {
 					if (row.type === 'transfer_in' || row.type === 'transfer_out') return '—';
 					if (row.type === 'expense') {
@@ -549,7 +533,7 @@ export default function TransactionsPage() {
 								</Button>
 							)}
 							<Button onClick={addExpense} loading={createTxn.isPending}>
-								<Plus size={16} /> New expense
+								<Plus size={16} /> New Transaction
 							</Button>
 						</div>
 					) : null
@@ -560,25 +544,6 @@ export default function TransactionsPage() {
 				search={search}
 				onSearchChange={setSearch}
 				searchPlaceholder="Search transactions…"
-				ordering={ordering}
-				onOrderingChange={setOrdering}
-				sortOptions={SORT_OPTIONS}
-				filters={[
-					{
-						key: 'type',
-						label: 'Type',
-						value: filters.type || '',
-						onChange: (v) => setFilter('type', v),
-						options: TYPE_FILTER
-					},
-					{
-						key: 'status',
-						label: 'Status',
-						value: filters.status || '',
-						onChange: (v) => setFilter('status', v),
-						options: STATUS_OPTIONS
-					}
-				]}
 			/>
 
 			{isLoading ? (
@@ -593,6 +558,9 @@ export default function TransactionsPage() {
 				<DataSheet
 					rows={rows}
 					columns={columns}
+					ordering={ordering}
+					defaultOrdering={DEFAULT_ORDERING}
+					onOrderingChange={setOrdering}
 					onCommit={commitCell}
 					onAdd={canEdit ? addExpense : undefined}
 					onRequestDelete={canEdit ? setDeleteTarget : undefined}
@@ -604,7 +572,7 @@ export default function TransactionsPage() {
 					adding={createTxn.isPending || duplicating}
 					saving={updateTxn.isPending || duplicating}
 					autoEdit={autoEdit}
-					addLabel="New expense"
+					addLabel="New transaction"
 					emptyMessage="No transactions yet. Scan a receipt or add an expense."
 				/>
 			)}

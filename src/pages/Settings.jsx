@@ -1,11 +1,12 @@
 import { useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { LogOut, Search, Settings as SettingsIcon, Shield } from 'lucide-react';
 
 import { patch } from '../lib/api';
 import { isMobileApp } from '../lib/desktop';
 import { updateStartingBalance, useFinanceBalance } from '../lib/resources';
-import { formatCost } from '../lib/format';
+import { cn, formatCost } from '../lib/format';
 import { toast } from '../stores/toastStore';
 import { useAuthStore } from '../stores/authStore';
 import { useIsProfileOwner, useProfileStore } from '../stores/profileStore';
@@ -25,8 +26,72 @@ const PROVIDER_LABELS = {
 	gemini: 'Gemini'
 };
 
+const SETTINGS_TABS = [
+	{ id: 'shortcuts', label: 'Shortcuts', mobileOnly: true },
+	{ id: 'account', label: 'Account' },
+	{ id: 'profiles', label: 'Profiles' },
+	{ id: 'wallet', label: 'Wallet' },
+	{ id: 'security', label: 'Security' },
+	{ id: 'receipt-ai', label: 'Receipt AI' }
+];
+
+function visibleSettingTabs(mobile) {
+	return SETTINGS_TABS.filter((tab) => !tab.mobileOnly || mobile);
+}
+
+function resolveSettingTab(raw, mobile) {
+	const allowed = visibleSettingTabs(mobile);
+	if (allowed.some((tab) => tab.id === raw)) return raw;
+	return mobile ? 'shortcuts' : 'account';
+}
+
+function SettingsTabBar({ tabs, active, onChange }) {
+	return (
+		<div className="border-line mb-4 overflow-x-auto border-b">
+			<div className="flex min-w-min gap-1" role="tablist" aria-label="Settings sections">
+				{tabs.map((tab) => {
+					const selected = active === tab.id;
+					return (
+						<button
+							key={tab.id}
+							type="button"
+							role="tab"
+							id={`settings-tab-${tab.id}`}
+							aria-selected={selected}
+							aria-controls={`settings-panel-${tab.id}`}
+							className={cn(
+								'cursor-pointer shrink-0 border-b-2 px-3 py-2 text-sm font-medium whitespace-nowrap',
+								selected
+									? 'border-primary text-primary'
+									: 'hover:text-fg border-transparent text-muted'
+							)}
+							onClick={() => onChange(tab.id)}
+						>
+							{tab.label}
+						</button>
+					);
+				})}
+			</div>
+		</div>
+	);
+}
+
+function SettingsPanel({ id, active, children }) {
+	return (
+		<div
+			role="tabpanel"
+			id={`settings-panel-${id}`}
+			aria-labelledby={`settings-tab-${id}`}
+			hidden={active !== id}
+		>
+			{children}
+		</div>
+	);
+}
+
 export default function SettingsPage() {
 	const queryClient = useQueryClient();
+	const [searchParams, setSearchParams] = useSearchParams();
 	const user = useAuthStore((s) => s.user);
 	const logout = useAuthStore((s) => s.logout);
 	const updateUser = useAuthStore((s) => s.updateUser);
@@ -90,6 +155,19 @@ export default function SettingsPage() {
 
 	if (!user) return null;
 
+	const tabs = visibleSettingTabs(mobile);
+	const activeTab = resolveSettingTab(searchParams.get('tab'), mobile);
+	const setActiveTab = (id) => {
+		setSearchParams(
+			(prev) => {
+				const next = new URLSearchParams(prev);
+				next.set('tab', id);
+				return next;
+			},
+			{ replace: true }
+		);
+	};
+
 	return (
 		<div>
 			<PageHeader
@@ -98,23 +176,28 @@ export default function SettingsPage() {
 				description="Manage your account and preferences."
 			/>
 
-			<div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+			<SettingsTabBar tabs={tabs} active={activeTab} onChange={setActiveTab} />
+
+			<div className="mx-auto max-w-2xl">
 				{mobile && (
-					<Card>
-						<CardHeader
-							title="Shortcuts"
-							subtitle="Search and alerts used to live in the top bar"
-						/>
-						<CardBody className="space-y-4">
-							<ProfileSwitcher />
-							<Button variant="secondary" className="w-full" onClick={openPalette}>
-								<Search size={16} /> Search transactions
-							</Button>
-							<InviteList />
-							<PurchaseAlertList />
-						</CardBody>
-					</Card>
+					<SettingsPanel id="shortcuts" active={activeTab}>
+						<Card>
+							<CardHeader
+								title="Shortcuts"
+								subtitle="Search and alerts used to live in the top bar"
+							/>
+							<CardBody className="space-y-4">
+								<ProfileSwitcher />
+								<Button variant="secondary" className="w-full" onClick={openPalette}>
+									<Search size={16} /> Search transactions
+								</Button>
+								<InviteList />
+								<PurchaseAlertList />
+							</CardBody>
+						</Card>
+					</SettingsPanel>
 				)}
+				<SettingsPanel id="account" active={activeTab}>
 				<Card>
 					<CardHeader title="Account" />
 					<CardBody className="space-y-4">
@@ -175,9 +258,12 @@ export default function SettingsPage() {
 						</Button>
 					</CardBody>
 				</Card>
+				</SettingsPanel>
 
-				<div className="space-y-4">
+				<SettingsPanel id="profiles" active={activeTab}>
 					<ProfileSettingsCard />
+				</SettingsPanel>
+				<SettingsPanel id="wallet" active={activeTab}>
 					<Card>
 						<CardHeader
 							title="Wallet"
@@ -211,7 +297,9 @@ export default function SettingsPage() {
 							</p>
 						</CardBody>
 					</Card>
+				</SettingsPanel>
 
+				<SettingsPanel id="security" active={activeTab}>
 					<Card>
 						<CardHeader
 							title="Two-factor authentication"
@@ -227,7 +315,9 @@ export default function SettingsPage() {
 							)}
 						</CardBody>
 					</Card>
+				</SettingsPanel>
 
+				<SettingsPanel id="receipt-ai" active={activeTab}>
 					<Card>
 						<CardHeader title="Receipt AI" subtitle="Used for receipt scan when a key is saved" />
 						<CardBody className="space-y-4">
@@ -341,7 +431,7 @@ export default function SettingsPage() {
 							</Button>
 						</CardBody>
 					</Card>
-				</div>
+				</SettingsPanel>
 			</div>
 			<MfaSetupModal open={mfaSetupOpen} onClose={() => setMfaSetupOpen(false)} />
 		</div>
