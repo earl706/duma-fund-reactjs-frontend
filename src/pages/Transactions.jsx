@@ -1,17 +1,26 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeftRight, Plus, ScanLine } from 'lucide-react';
+import { ArrowLeftRight, FileDown, FileUp, Plus, ScanLine } from 'lucide-react';
 
 import { categoriesApi, transactionsApi, useFinanceBalance } from '../lib/resources';
-import { post } from '../lib/api';
+import { del, post } from '../lib/api';
 import { fetchAllPages } from '../lib/fetchAll';
 import { isMobileApp } from '../lib/desktop';
+import { downloadBlob } from '../lib/groceryReceipt';
 import { firstCommittedTransactionId, mediaUrl } from '../lib/receiptScan';
 import { STATUS_TONE } from '../lib/status';
 import { cn, formatCost, formatDate, formatDateShort, parseDateShort } from '../lib/format';
+import {
+	categoryPath,
+	defaultCategoryId,
+	mapLimit,
+	parseTransactionsCsv,
+	resolveCategories,
+	serializeTransactionsCsv
+} from '../lib/transactionCsv';
 import { toast } from '../stores/toastStore';
-import { useActiveProfileId, useCanEditLedger } from '../stores/profileStore';
+import { useActiveProfileId, useCanEditLedger, useProfileStore } from '../stores/profileStore';
 import { useListControls } from '../hooks/useListControls';
 import { ReceiptImportModal } from '../components/finance/ReceiptImportModal';
 import { MobileTransactionsView } from '../components/finance/MobileTransactionsView';
@@ -143,6 +152,15 @@ export default function TransactionsPage() {
 	const [bulkDeleting, setBulkDeleting] = useState(false);
 	const [duplicating, setDuplicating] = useState(false);
 	const [scanOpen, setScanOpen] = useState(false);
+	const [selectedIds, setSelectedIds] = useState([]);
+	const [importDraft, setImportDraft] = useState(null);
+	const [csvBusy, setCsvBusy] = useState(false);
+	const [csvProgress, setCsvProgress] = useState('');
+	const fileInputRef = useRef(null);
+	const onSelectionChange = useCallback((ids) => setSelectedIds(ids), []);
+	const profileName = useProfileStore(
+		(s) => s.profiles.find((p) => p.id === s.activeProfileId)?.name
+	);
 
 	useEffect(() => {
 		if (pendingFocusId == null) return;
@@ -246,6 +264,218 @@ export default function TransactionsPage() {
 			toast.error('Could not duplicate transaction.');
 		} finally {
 			setDuplicating(false);
+		}
+	};
+
+	const exportRows = useMemo(() => {
+		if (selectedIds.length) {
+			const picked = new Set(selectedIds);
+			return rows.filter((r) => picked.has(r.id));
+		}
+		return rows;
+	}, [rows, selectedIds]);
+
+	const refreshLedger = async () => {
+		await queryClient.invalidateQueries({ queryKey: ['finance-transactions'] });
+		queryClient.invalidateQueries({ queryKey: ['finance-balance'] });
+		queryClient.invalidateQueries({ queryKey: ['finance-analytics'] });
+	};
+
+	const exportCsv = async () => {
+		if (csvBusy) return;
+		if (!exportRows.length) {
+			toast.error(
+				selectedIds.length ? 'No selected transactions to export.' : 'Nothing to export.'
+			);
+			return;
+		}
+		setCsvBusy(true);
+		setCsvProgress('Preparing export…');
+		try {
+			const [expenseCats, incomeCats] = await Promise.all([
+				fetchAllPages('/finance/categories/', { kind: 'expense' }),
+				fetchAllPages('/finance/categories/', { kind: 'income' })
+			]);
+			const byId = new Map();
+			[...expenseCats, ...incomeCats].forEach((c) => byId.set(c.id, c));
+			const records = await mapLimit(exportRows, 6, async (row) => {
+				const names =
+					row.type === 'transfer_in' || row.type === 'transfer_out'
+						? []
+						: row.type === 'expense'
+							? (row.categories?.length ? row.categories : row.category ? [row.category] : [])
+									.map((id) => categoryPath(byId.get(id), byId))
+									.filter(Boolean)
+							: row.category != null
+								? [categoryPath(byId.get(row.category), byId)].filter(Boolean)
+								: [];
+				let items = [];
+				if (row.type === 'expense' && Number(row.item_count) > 0) {
+					items = await fetchAllPages(`/finance/transactions/${row.id}/items/`);
+				}
+				return {
+					type: row.type,
+					title: row.title || '',
+					merchant: row.merchant || '',
+					amount: row.amount ?? '0.00',
+					note: row.note || '',
+					categoryNames: names,
+					status: row.status || 'active',
+					date_created: row.date_created || '',
+					date_effective: row.date_effective || '',
+					items
+				};
+			});
+			const csv = serializeTransactionsCsv(records);
+			const slug = String(profileName || 'ledger')
+				.replace(/[^\w\-]+/g, '-')
+				.replace(/-+/g, '-')
+				.replace(/^-|-$/g, '')
+				.slice(0, 40);
+			downloadBlob(
+				new Blob([csv], { type: 'text/csv;charset=utf-8' }),
+				`transactions-${slug || 'ledger'}-${todayISO()}.csv`
+			);
+			const n = records.length;
+			const itemCount = records.reduce((sum, rec) => sum + (rec.items?.length || 0), 0);
+			toast.success(
+				selectedIds.length
+					? `Exported ${n} selected transaction${n === 1 ? '' : 's'}${itemCount ? ` · ${itemCount} items` : ''}.`
+					: `Exported ${n} transaction${n === 1 ? '' : 's'}${itemCount ? ` · ${itemCount} items` : ''}.`
+			);
+		} catch {
+			toast.error('Could not export transactions.');
+		} finally {
+			setCsvBusy(false);
+			setCsvProgress('');
+		}
+	};
+
+	const onPickCsv = async (event) => {
+		const file = event.target.files?.[0];
+		event.target.value = '';
+		if (!file || csvBusy) return;
+		try {
+			const text = await file.text();
+			const { transactions, warnings } = parseTransactionsCsv(text);
+			if (!transactions.length) {
+				toast.error(warnings[0] || 'No transactions found in that file.');
+				return;
+			}
+			setImportDraft({ transactions, warnings, fileName: file.name });
+		} catch {
+			toast.error('Could not read that CSV file.');
+		}
+	};
+
+	const createImportedTransaction = async (draft, categoryLists) => {
+		const isTransfer = draft.type === 'transfer_in' || draft.type === 'transfer_out';
+		const kind = draft.type === 'income' ? 'income' : 'expense';
+		const fallbackId = defaultCategoryId(categoryLists, kind);
+		const resolved = isTransfer
+			? { category: null, categories: [] }
+			: resolveCategories(
+					draft.categoryNames,
+					kind,
+					categoryLists,
+					fallbackId,
+					draft.type === 'expense' ? MAX_EXPENSE_CATEGORIES : 1
+				);
+		const body = {
+			type: draft.type,
+			title: draft.title || '',
+			merchant: draft.merchant || '',
+			amount: draft.amount ?? '0.00',
+			note: draft.note || '',
+			category: isTransfer ? null : resolved.category,
+			categories: draft.type === 'expense' ? resolved.categories : [],
+			status: draft.status || 'active',
+			date_created: draft.date_created || todayISO(),
+			date_effective: draft.date_effective || todayISO()
+		};
+		if (!isTransfer && body.category == null) {
+			throw new Error(
+				draft.type === 'income'
+					? 'Create an income category first.'
+					: 'Create an expense category first.'
+			);
+		}
+		const created = await post('/finance/transactions/', body);
+		if (draft.type === 'expense' && draft.items?.length && created?.id != null) {
+			await mapLimit(draft.items, 4, (item) =>
+				post(`/finance/transactions/${created.id}/items/`, {
+					title: item.title,
+					cost: item.cost,
+					quantity: item.quantity,
+					unit: item.unit,
+					status: item.status
+				})
+			);
+		}
+		return created;
+	};
+
+	const commitImport = async (mode) => {
+		if (!importDraft?.transactions?.length || csvBusy) return;
+		setCsvBusy(true);
+		const drafts = importDraft.transactions;
+		try {
+			setCsvProgress('Loading categories…');
+			const [expenseCats, incomeCats] = await Promise.all([
+				fetchAllPages('/finance/categories/', { kind: 'expense' }),
+				fetchAllPages('/finance/categories/', { kind: 'income' })
+			]);
+			const categoryLists = [...expenseCats, ...incomeCats];
+
+			let existingIds = [];
+			if (mode === 'replace') {
+				setCsvProgress('Reading current ledger…');
+				const existing = await fetchAllPages('/finance/transactions/');
+				existingIds = existing.map((row) => row.id);
+			}
+
+			let created = 0;
+			const failures = [];
+			for (let i = 0; i < drafts.length; i += 1) {
+				setCsvProgress(`Importing ${i + 1} of ${drafts.length}…`);
+				try {
+					await createImportedTransaction(drafts[i], categoryLists);
+					created += 1;
+				} catch (err) {
+					failures.push(drafts[i].title || `Row ${i + 1}`);
+					if (err?.message?.includes('category first')) {
+						toast.error(err.message);
+						break;
+					}
+				}
+			}
+
+			if (mode === 'replace' && created === drafts.length && existingIds.length) {
+				setCsvProgress('Removing previous transactions…');
+				await mapLimit(existingIds, 6, (id) => del(`/finance/transactions/${id}/`));
+			}
+
+			await refreshLedger();
+			setImportDraft(null);
+
+			if (created === drafts.length) {
+				const extra =
+					mode === 'replace' && existingIds.length
+						? ` Replaced ${existingIds.length} existing.`
+						: '';
+				toast.success(`Imported ${created} transaction${created === 1 ? '' : 's'}.${extra}`);
+			} else if (created) {
+				const kept =
+					mode === 'replace' ? ' Existing transactions were kept because some rows failed.' : '';
+				toast.error(`Imported ${created} of ${drafts.length}. ${failures.length} failed.${kept}`);
+			} else {
+				toast.error('Could not import transactions.');
+			}
+		} catch {
+			toast.error('Could not import transactions.');
+		} finally {
+			setCsvBusy(false);
+			setCsvProgress('');
 		}
 	};
 
@@ -525,18 +755,37 @@ export default function TransactionsPage() {
 						: 'Income, expenses, and transfers.'
 				}
 				actions={
-					canEdit ? (
-						<div className="flex flex-wrap gap-2">
-							{!mobile && (
-								<Button variant="secondary" onClick={() => setScanOpen(true)}>
-									<ScanLine size={16} /> Scan receipt
+					<div className="flex flex-wrap gap-2">
+						<Button variant="secondary" onClick={exportCsv} loading={csvBusy && !importDraft}>
+							<FileDown size={16} /> Export
+						</Button>
+						{canEdit ? (
+							<>
+								<Button
+									variant="secondary"
+									onClick={() => fileInputRef.current?.click()}
+									disabled={csvBusy}
+								>
+									<FileUp size={16} /> Import
 								</Button>
-							)}
-							<Button onClick={addExpense} loading={createTxn.isPending}>
-								<Plus size={16} /> New Transaction
-							</Button>
-						</div>
-					) : null
+								<input
+									ref={fileInputRef}
+									type="file"
+									accept=".csv,text/csv,text/plain"
+									className="hidden"
+									onChange={onPickCsv}
+								/>
+								{!mobile && (
+									<Button variant="secondary" onClick={() => setScanOpen(true)}>
+										<ScanLine size={16} /> Scan receipt
+									</Button>
+								)}
+								<Button onClick={addExpense} loading={createTxn.isPending}>
+									<Plus size={16} /> New Transaction
+								</Button>
+							</>
+						) : null}
+					</div>
 				}
 			/>
 
@@ -567,6 +816,7 @@ export default function TransactionsPage() {
 					onRequestDuplicate={canEdit ? duplicateTxn : undefined}
 					onRequestInfo={setInfoTarget}
 					onBulkDelete={canEdit ? setBulkDeleteIds : undefined}
+					onSelectionChange={onSelectionChange}
 					selectable={canEdit}
 					readOnly={!canEdit}
 					adding={createTxn.isPending || duplicating}
@@ -627,6 +877,62 @@ export default function TransactionsPage() {
 				title="Transaction"
 				fields={infoFields(infoTarget)}
 			/>
+
+			<Modal
+				open={Boolean(importDraft)}
+				onClose={() => !csvBusy && setImportDraft(null)}
+				title="Import transactions"
+				size="md"
+				footer={
+					<>
+						<Button variant="secondary" onClick={() => setImportDraft(null)} disabled={csvBusy}>
+							Cancel
+						</Button>
+						<Button variant="secondary" onClick={() => commitImport('append')} loading={csvBusy}>
+							Add to ledger
+						</Button>
+						<Button variant="danger" onClick={() => commitImport('replace')} disabled={csvBusy}>
+							Replace all
+						</Button>
+					</>
+				}
+			>
+				{importDraft ? (
+					<div className="space-y-3 text-sm">
+						<p className="text-muted">
+							<span className="text-fg font-medium">{importDraft.fileName}</span> has{' '}
+							<span className="text-fg font-medium">{importDraft.transactions.length}</span>{' '}
+							transaction
+							{importDraft.transactions.length === 1 ? '' : 's'}
+							{(() => {
+								const items = importDraft.transactions.reduce(
+									(sum, txn) => sum + (txn.items?.length || 0),
+									0
+								);
+								return items ? ` and ${items} line item${items === 1 ? '' : 's'}` : '';
+							})()}
+							.
+						</p>
+						<p className="text-muted">
+							<strong className="text-fg font-medium">Add to ledger</strong> keeps existing rows and
+							creates these as new transactions. Categories are matched by name; unknown names use
+							Other.
+						</p>
+						<p className="text-muted">
+							<strong className="text-fg font-medium">Replace all</strong> imports first, then
+							deletes every current transaction in this profile if every row succeeds. This cannot
+							be undone.
+						</p>
+						{importDraft.warnings?.length ? (
+							<p className="text-warning">
+								{importDraft.warnings.length} parse warning
+								{importDraft.warnings.length === 1 ? '' : 's'}: {importDraft.warnings[0]}
+							</p>
+						) : null}
+						{csvProgress ? <p className="text-fg">{csvProgress}</p> : null}
+					</div>
+				) : null}
+			</Modal>
 
 			{!mobile && (
 				<ReceiptImportModal

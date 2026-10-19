@@ -226,6 +226,7 @@ function SheetOverlay({
  * (Wikipedia-style arrows; third click returns to `defaultOrdering`).
  * Set `col.sortable = false` or use actions/action-link to skip a column;
  * `col.sortKey` overrides the API ordering field.
+ * `onSelectionChange(ids)` reports checked row ids whenever selection changes.
  */
 export function DataSheet({
 	rows,
@@ -236,6 +237,7 @@ export function DataSheet({
 	onRequestDuplicate,
 	onRequestInfo,
 	onBulkDelete,
+	onSelectionChange,
 	selectable = false,
 	adding = false,
 	saving = false,
@@ -381,6 +383,10 @@ export function DataSheet({
 			return next.size === prev.size ? prev : next;
 		});
 	}, [rowIds]);
+
+	useEffect(() => {
+		onSelectionChange?.(Array.from(selectedIds));
+	}, [selectedIds, onSelectionChange]);
 
 	const allSelected = rows.length > 0 && rows.every((r) => selectedIds.has(r.id));
 	const someSelected = rows.some((r) => selectedIds.has(r.id));
