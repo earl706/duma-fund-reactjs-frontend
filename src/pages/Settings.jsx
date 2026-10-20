@@ -6,7 +6,7 @@ import { LogOut, Search, Settings as SettingsIcon, Shield } from 'lucide-react';
 import { patch } from '../lib/api';
 import { isMobileApp } from '../lib/desktop';
 import { updateStartingBalance, useFinanceBalance } from '../lib/resources';
-import { cn, formatCost } from '../lib/format';
+import { formatCost } from '../lib/format';
 import { toast } from '../stores/toastStore';
 import { useAuthStore } from '../stores/authStore';
 import { useIsProfileOwner, useProfileStore } from '../stores/profileStore';
@@ -47,28 +47,29 @@ function resolveSettingTab(raw, mobile) {
 
 function SettingsTabBar({ tabs, active, onChange }) {
 	return (
-		<div className="border-line mb-4 overflow-x-auto border-b">
-			<div className="flex min-w-min gap-1" role="tablist" aria-label="Settings sections">
+		<div className="mb-4 overflow-x-auto">
+			<div
+				className="border-line bg-surface-2 inline-flex rounded-md border p-0.5"
+				role="tablist"
+				aria-label="Settings sections"
+			>
 				{tabs.map((tab) => {
 					const selected = active === tab.id;
 					return (
-						<button
+						<Button
 							key={tab.id}
 							type="button"
+							size="sm"
+							variant={selected ? 'primary' : 'ghost'}
+							className="h-8 shrink-0 whitespace-nowrap"
 							role="tab"
 							id={`settings-tab-${tab.id}`}
 							aria-selected={selected}
 							aria-controls={`settings-panel-${tab.id}`}
-							className={cn(
-								'cursor-pointer shrink-0 border-b-2 px-3 py-2 text-sm font-medium whitespace-nowrap',
-								selected
-									? 'border-primary text-primary'
-									: 'hover:text-fg border-transparent text-muted'
-							)}
 							onClick={() => onChange(tab.id)}
 						>
 							{tab.label}
-						</button>
+						</Button>
 					);
 				})}
 			</div>

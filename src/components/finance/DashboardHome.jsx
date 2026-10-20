@@ -36,21 +36,20 @@ const CATEGORY_COLORS = [
 
 function PeriodToggle({ period, onPeriod }) {
 	return (
-		<div className="border-line bg-surface-2 inline-flex rounded-full border p-0.5">
+		<div className="border-line bg-surface-2 inline-flex rounded-md border p-0.5">
 			{PERIODS.map((g) => (
-				<button
+				<Button
 					key={g.value}
 					type="button"
+					size="sm"
+					variant={period === g.value ? 'primary' : 'ghost'}
+					className="h-8"
 					title={g.title}
 					aria-label={g.title}
 					onClick={() => onPeriod(g.value)}
-					className={cn(
-						'text-xxs h-8 cursor-pointer rounded-full px-2.5 font-medium transition-colors',
-						period === g.value ? 'bg-primary text-primary-fg' : 'text-muted hover:text-fg'
-					)}
 				>
 					{g.label}
-				</button>
+				</Button>
 			))}
 		</div>
 	);
