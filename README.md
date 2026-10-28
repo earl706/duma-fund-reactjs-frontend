@@ -7,4 +7,4 @@ npm install
 npm run dev    # http://localhost:5173
 ```
 
-See the repo root `architecture.txt` and `README` docs for the full stack.
+See `architecture/overview.txt` for the full stack.

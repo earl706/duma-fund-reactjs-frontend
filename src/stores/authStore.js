@@ -163,7 +163,8 @@ export const useAuthStore = create((set, get) => ({
 	},
 
 	oauthStart(provider) {
-		window.location.assign(`${getApiBaseURL()}/auth/oauth/${provider}/start/`);
+		const frontend = encodeURIComponent(window.location.origin);
+		window.location.assign(`${getApiBaseURL()}/auth/oauth/${provider}/start/?frontend=${frontend}`);
 	},
 
 	async completeOAuth(code) {
