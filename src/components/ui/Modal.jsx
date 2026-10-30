@@ -23,7 +23,13 @@ export function Modal({ open, onClose, title, children, footer, size = 'md' }) {
 		};
 	}, [open, onClose]);
 
-	const widths = { sm: 'max-w-sm', md: 'max-w-lg', lg: 'max-w-2xl', xl: 'max-w-4xl' };
+	const widths = {
+		sm: 'max-w-sm',
+		md: 'max-w-lg',
+		lg: 'max-w-2xl',
+		xl: 'max-w-4xl',
+		'2xl': 'max-w-7xl'
+	};
 	const fullBleed = size === 'xl';
 
 	return (

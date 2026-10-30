@@ -74,6 +74,7 @@ function appendReceiptFields(
 		category_id,
 		category_ids,
 		date_effective,
+		source_id,
 		items,
 		entries
 	}
@@ -89,6 +90,9 @@ function appendReceiptFields(
 		form.append('category_ids', JSON.stringify(category_ids));
 	}
 	if (date_effective) form.append('date_effective', date_effective);
+	if (source_id != null && source_id !== '') {
+		form.append('source_id', String(source_id));
+	}
 	if (document_kind === 'bank_slip') {
 		form.append('entries', JSON.stringify(entries || []));
 		form.append('items', JSON.stringify([]));
@@ -108,6 +112,7 @@ export async function commitReceipt({
 	category_id,
 	category_ids,
 	date_effective,
+	source_id,
 	items,
 	entries
 }) {
@@ -121,6 +126,7 @@ export async function commitReceipt({
 		category_id,
 		category_ids,
 		date_effective,
+		source_id,
 		items,
 		entries
 	});
@@ -153,6 +159,7 @@ export async function commitReceiptsBulk(receipts) {
 			category_id,
 			category_ids,
 			date_effective,
+			source_id,
 			items,
 			entries
 		}) => {
@@ -171,6 +178,7 @@ export async function commitReceiptsBulk(receipts) {
 				row.category_ids = category_ids;
 			}
 			if (date_effective) row.date_effective = date_effective;
+			if (source_id != null && source_id !== '') row.source_id = source_id;
 			return row;
 		}
 	);
@@ -247,7 +255,9 @@ export function normalizeDraftBankEntries(entries, fallbackIncomeCategoryId) {
 			merchant: entry.merchant || '',
 			note: entry.note || '',
 			date_effective: entry.date_effective || '',
-			category_id: txnType === 'income' ? (entry.category_id ?? fallbackIncomeCategoryId ?? '') : ''
+			category_id:
+				txnType === 'income' ? (entry.category_id ?? fallbackIncomeCategoryId ?? '') : '',
+			source_id: entry.source_id ?? ''
 		};
 	});
 }

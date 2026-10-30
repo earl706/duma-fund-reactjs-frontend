@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Link } from 'react-router-dom';
-import { CopyPlus, ExternalLink, Info, Plus, Trash2 } from 'lucide-react';
+import { CopyPlus, ExternalLink, Info, Loader2, Plus, Trash2 } from 'lucide-react';
 
 import { cn, formatCost } from '../../lib/format';
 import { CategoryMultiSelect } from '../finance/CategoryMultiSelect';
@@ -227,6 +227,7 @@ function SheetOverlay({
  * Set `col.sortable = false` or use actions/action-link to skip a column;
  * `col.sortKey` overrides the API ordering field.
  * `onSelectionChange(ids)` reports checked row ids whenever selection changes.
+ * `pendingCells` maps row id → column keys currently saving (spinner + muted cell).
  */
 export function DataSheet({
 	rows,
@@ -241,6 +242,8 @@ export function DataSheet({
 	selectable = false,
 	adding = false,
 	saving = false,
+	/** Row id → column keys currently saving (shows cell spinner / muted value). */
+	pendingCells = null,
 	autoEdit = null,
 	addLabel = 'Add row',
 	emptyMessage = 'No rows yet. Add a row to get started.',
@@ -658,6 +661,18 @@ export function DataSheet({
 
 	const isEditing = (rowId, field) => edit?.id === rowId && edit?.field === field;
 
+	const isCellPending = (rowId, colKey) => {
+		if (!pendingCells) return false;
+		const fields = pendingCells[rowId] ?? pendingCells[String(rowId)];
+		return Array.isArray(fields) && fields.includes(colKey);
+	};
+
+	const rowHasPending = (rowId) => {
+		if (!pendingCells) return false;
+		const fields = pendingCells[rowId] ?? pendingCells[String(rowId)];
+		return Array.isArray(fields) && fields.length > 0;
+	};
+
 	const displayCell = (row, col) => {
 		if (col.type === 'status-icon') {
 			return <StatusDot status={row[col.key]} />;
@@ -831,13 +846,16 @@ export function DataSheet({
 					) : (
 						rows.map((row) => {
 							const selected = selectedIds.has(row.id);
+							const pendingRow = rowHasPending(row.id);
 							return (
 								<tr
 									key={row.id}
 									data-row-id={row.id}
+									aria-busy={pendingRow || undefined}
 									className={cn(
-										'border-line border-b last:border-b-0',
-										selected ? 'bg-primary/8' : 'hover:bg-surface-2/60'
+										'border-line border-b transition-colors duration-200 last:border-b-0',
+										selected ? 'bg-primary/8' : 'hover:bg-surface-2/60',
+										pendingRow && 'bg-primary/[0.04]'
 									)}
 								>
 									{sheetSelectable && (
@@ -1057,31 +1075,36 @@ export function DataSheet({
 										}
 
 										const shown = displayCell(row, col);
+										const cellPending = isCellPending(row.id, col.key);
 										const cellSelected = isCellInSelection(row.id, col.key);
 										const fillTarget = isFillPreviewCell(row.id, col.key);
 										const hasFillHandle =
 											showFillHandle &&
 											fillHandleCell?.rowId === row.id &&
 											fillHandleCell?.colKey === col.key;
-										const titleText = isFillableCell(col)
-											? 'Click to select · double-click to edit · drag fill handle to copy down'
-											: col.type === 'status-icon'
-												? row[col.key]
-												: undefined;
+										const titleText = cellPending
+											? 'Saving…'
+											: isFillableCell(col)
+												? 'Click to select · double-click to edit · drag fill handle to copy down'
+												: col.type === 'status-icon'
+													? row[col.key]
+													: undefined;
 
 										return (
 											<td
 												key={col.key}
+												aria-busy={cellPending || undefined}
 												className={cn(
-													'text-fg truncate select-none',
-													hasFillHandle && 'relative',
+													'text-fg truncate transition-opacity duration-200 select-none',
+													(hasFillHandle || cellPending) && 'relative',
 													cellPad,
 													col.align === 'right' && 'text-right tabular-nums',
-													isFillableCell(col) && 'hover:bg-primary/5 cursor-cell',
+													isFillableCell(col) && !cellPending && 'hover:bg-primary/5 cursor-cell',
 													cellSelected && 'bg-primary/15 ring-primary/35 ring-1 ring-inset',
 													fillTarget &&
 														isFillDragging &&
 														'bg-primary/25 ring-primary/50 ring-1 ring-inset',
+													cellPending && 'bg-primary/10',
 													!col.editable && col.type !== 'status-icon' && 'text-muted',
 													col.type === 'status-icon' && 'text-center',
 													col.className
@@ -1090,11 +1113,26 @@ export function DataSheet({
 													if (e.shiftKey) e.preventDefault();
 													handleCellSelect(e, row, col);
 												}}
-												onDoubleClick={() => startEdit(row, col.key)}
+												onDoubleClick={() => !cellPending && startEdit(row, col.key)}
 												title={titleText}
 											>
-												{shown}
-												{hasFillHandle && (
+												<span
+													className={cn(
+														'inline-flex max-w-full items-center gap-1 transition-opacity duration-200',
+														cellPending && 'opacity-55',
+														col.align === 'right' && 'w-full justify-end'
+													)}
+												>
+													{cellPending && (
+														<Loader2
+															size={12}
+															className="text-primary shrink-0 animate-spin"
+															aria-hidden
+														/>
+													)}
+													<span className="min-w-0 truncate">{shown}</span>
+												</span>
+												{hasFillHandle && !cellPending && (
 													<span
 														role="button"
 														tabIndex={-1}

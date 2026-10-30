@@ -199,8 +199,8 @@ function CategoryPie({ rows }) {
 
 function DashboardPane({
 	balance,
-	income,
-	expense,
+	moneyIn,
+	moneyOut,
 	chips,
 	selectedChip,
 	onChip,
@@ -214,29 +214,38 @@ function DashboardPane({
 				<p className="text-fg mt-1 text-[2rem] leading-none font-semibold tracking-tight tabular-nums">
 					{balance ? formatCost(balance.balance) : '—'}
 				</p>
-				<p className="text-muted mt-2 text-sm">
-					Starting{' '}
-					<span className="text-fg tabular-nums">
-						{balance ? formatCost(balance.starting_balance) : '—'}
-					</span>
-				</p>
+				{balance?.sources?.length > 0 && (
+					<ul className="border-line mt-3 space-y-1.5 border-t pt-3">
+						{balance.sources.slice(0, 3).map((src) => (
+							<li key={src.id} className="flex items-baseline justify-between gap-3 text-sm">
+								<span
+									className={`truncate ${src.status === 'archived' ? 'text-muted' : 'text-fg'}`}
+								>
+									{src.name}
+									{src.status === 'archived' ? ' · archived' : ''}
+								</span>
+								<span className="text-fg shrink-0 tabular-nums">{formatCost(src.balance)}</span>
+							</li>
+						))}
+					</ul>
+				)}
 			</section>
 
 			<div className="grid shrink-0 grid-cols-2 gap-3">
 				<div className="border-line bg-surface rounded-lg border px-4 py-3">
 					<p className="text-success flex items-center gap-1 text-xs font-semibold tracking-wide uppercase">
-						<ArrowDownLeft size={14} /> Income
+						<ArrowDownLeft size={14} /> Money in
 					</p>
 					<p className="text-success mt-1 text-lg font-semibold tabular-nums">
-						+{formatCost(income)}
+						+{formatCost(moneyIn)}
 					</p>
 				</div>
 				<div className="border-line bg-surface rounded-lg border px-4 py-3">
 					<p className="text-danger flex items-center gap-1 text-xs font-semibold tracking-wide uppercase">
-						<ArrowUpRight size={14} /> Expenses
+						<ArrowUpRight size={14} /> Money out
 					</p>
 					<p className="text-danger mt-1 text-lg font-semibold tabular-nums">
-						−{formatCost(expense)}
+						−{formatCost(moneyOut)}
 					</p>
 				</div>
 			</div>
@@ -418,8 +427,8 @@ export function DashboardHome({
 	period,
 	onPeriod,
 	rangeLabel,
-	income,
-	expense,
+	moneyIn,
+	moneyOut,
 	net,
 	chips,
 	selectedChip,
@@ -480,8 +489,8 @@ export function DashboardHome({
 	const dash = (
 		<DashboardPane
 			balance={balance}
-			income={income}
-			expense={expense}
+			moneyIn={moneyIn}
+			moneyOut={moneyOut}
 			chips={chips}
 			selectedChip={selectedChip}
 			onChip={onChip}

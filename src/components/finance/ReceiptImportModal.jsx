@@ -1,7 +1,9 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { Camera, ChevronLeft, ChevronRight, Images, ScanLine, Trash2 } from 'lucide-react';
 
+import { cashSourceId, resolveSourceId, sourceSelectOptions } from '../../lib/balanceSources';
 import { getCroppedImageFile } from '../../lib/cropImage';
+import { sourcesApi } from '../../lib/resources';
 import {
 	BANK_TXN_TYPES,
 	bulkScanReceipts,
@@ -155,8 +157,9 @@ async function prepareImageFile(originalFile, croppedAreaPixels) {
 	}
 }
 
-function draftFromScan(data, file, fallbackCategoryId, fallbackIncomeCategoryId) {
+function draftFromScan(data, file, fallbackCategoryId, fallbackIncomeCategoryId, sources) {
 	const kind = data.document_kind || (data.entries?.length ? 'bank_slip' : 'retail_receipt');
+	const cashId = cashSourceId(sources);
 	if (kind === 'bank_slip') {
 		return {
 			id: newId('draft'),
@@ -166,8 +169,15 @@ function draftFromScan(data, file, fallbackCategoryId, fallbackIncomeCategoryId)
 			dateEffective: '',
 			headerCategoryId: '',
 			headerCategoryIds: [],
+			sourceId: cashId || '',
 			rows: [],
-			bankEntries: normalizeDraftBankEntries(data.entries, fallbackIncomeCategoryId)
+			bankEntries: normalizeDraftBankEntries(data.entries, fallbackIncomeCategoryId).map(
+				(entry) => ({
+					...entry,
+					source_id:
+						entry.source_id || resolveSourceId(entry.merchant, sources, cashId) || cashId || ''
+				})
+			)
 		};
 	}
 	const effective = data.date_effective || todayISO();
@@ -186,6 +196,7 @@ function draftFromScan(data, file, fallbackCategoryId, fallbackIncomeCategoryId)
 		dateEffective: effective,
 		headerCategoryId: primary ? String(primary) : '',
 		headerCategoryIds: rolled,
+		sourceId: resolveSourceId(data.merchant, sources, cashId) || cashId || '',
 		rows: normalizeDraftItems(data.items),
 		bankEntries: []
 	};
@@ -214,6 +225,7 @@ export function ReceiptImportModal({
 	const [drafts, setDrafts] = useState([]);
 	const [failures, setFailures] = useState([]); // { id, name, file, detail }
 	const [reviewIndex, setReviewIndex] = useState(0);
+	const { data: sourcesData } = sourcesApi.useList({ page_size: 100 });
 
 	const currentImage = images[cropIndex] || null;
 	const sourceUrl = useObjectUrl(currentImage?.file);
@@ -227,6 +239,8 @@ export function ReceiptImportModal({
 		defaultIncomeCategoryId ||
 		incomeCategories.find((c) => c.name === 'Other' && !c.parent)?.id ||
 		incomeCategories[0]?.id;
+	const sources = sourcesData?.results || [];
+	const sourceOptions = sourceSelectOptions(sources);
 
 	const expenseOptions = useMemo(
 		() => categories.map((c) => ({ value: String(c.id), label: c.name })),
@@ -325,7 +339,7 @@ export function ReceiptImportModal({
 			}
 			try {
 				nextDrafts.push(
-					draftFromScan(row.draft, file, fallbackCategoryId, fallbackIncomeCategoryId)
+					draftFromScan(row.draft, file, fallbackCategoryId, fallbackIncomeCategoryId, sources)
 				);
 			} catch {
 				nextFailures.push({
@@ -487,7 +501,16 @@ export function ReceiptImportModal({
 						file: draft.file,
 						document_kind: 'bank_slip',
 						entries: draft.bankEntries.map(
-							({ txn_type, amount, title, merchant: m, note, date_effective, category_id }) => {
+							({
+								txn_type,
+								amount,
+								title,
+								merchant: m,
+								note,
+								date_effective,
+								category_id,
+								source_id
+							}) => {
 								const entry = {
 									txn_type,
 									amount,
@@ -499,6 +522,7 @@ export function ReceiptImportModal({
 								if (txn_type === 'income' && category_id) {
 									entry.category_id = Number(category_id);
 								}
+								if (source_id) entry.source_id = Number(source_id);
 								return entry;
 							}
 						)
@@ -520,6 +544,7 @@ export function ReceiptImportModal({
 					category_id: primary,
 					category_ids: ids,
 					date_effective: draft.dateEffective || undefined,
+					source_id: draft.sourceId ? Number(draft.sourceId) : undefined,
 					items: draft.rows.map(({ title, cost, quantity, unit }) => ({
 						title: title.trim(),
 						cost,
@@ -737,6 +762,7 @@ export function ReceiptImportModal({
 									previewUrl={previewUrl}
 									expenseOptions={expenseOptions}
 									fallbackCategoryId={fallbackCategoryId}
+									sourceOptions={sourceOptions}
 									onPatch={(patch) => patchDraft(currentDraft.id, patch)}
 									onRemove={() => removeDraft(currentDraft.id)}
 									importing={importing}
@@ -748,6 +774,7 @@ export function ReceiptImportModal({
 									previewUrl={previewUrl}
 									incomeCategories={incomeCategories}
 									fallbackIncomeCategoryId={fallbackIncomeCategoryId}
+									sourceOptions={sourceOptions}
 									onPatch={(patch) => patchDraft(currentDraft.id, patch)}
 									onRemove={() => removeDraft(currentDraft.id)}
 									importing={importing}
@@ -802,6 +829,7 @@ function RetailDraftEditor({
 	previewUrl,
 	expenseOptions,
 	fallbackCategoryId,
+	sourceOptions = [],
 	onPatch,
 	onRemove,
 	importing,
@@ -851,6 +879,19 @@ function RetailDraftEditor({
 						value={draft.dateEffective}
 						onChange={(e) => onPatch({ dateEffective: e.target.value })}
 					/>
+					{sourceOptions.length > 0 && (
+						<Select
+							label="Paid from"
+							value={draft.sourceId || ''}
+							onChange={(e) => onPatch({ sourceId: e.target.value })}
+						>
+							{sourceOptions.map((s) => (
+								<option key={s.id} value={s.id}>
+									{s.name}
+								</option>
+							))}
+						</Select>
+					)}
 				</div>
 			</div>
 
@@ -1048,6 +1089,7 @@ function BankDraftEditor({
 	previewUrl,
 	incomeCategories,
 	fallbackIncomeCategoryId,
+	sourceOptions = [],
 	onPatch,
 	onRemove,
 	importing,
@@ -1160,6 +1202,19 @@ function BankDraftEditor({
 								onChange={(e) => setEntry(row._key, 'date_effective', e.target.value)}
 							/>
 						</div>
+						{sourceOptions.length > 0 && (
+							<Select
+								label="Source"
+								value={row.source_id || ''}
+								onChange={(e) => setEntry(row._key, 'source_id', e.target.value)}
+							>
+								{sourceOptions.map((s) => (
+									<option key={s.id} value={s.id}>
+										{s.name}
+									</option>
+								))}
+							</Select>
+						)}
 						{row.txn_type === 'income' ? (
 							<Select
 								label="Category"
@@ -1186,7 +1241,7 @@ function BankDraftEditor({
 			<DraftTotals items={totals} className="md:hidden" />
 
 			<div className="border-line hidden overflow-x-auto rounded-md border md:block">
-				<table className="w-full min-w-[920px] table-fixed border-collapse text-sm">
+				<table className="w-full min-w-[1040px] table-fixed border-collapse text-sm">
 					<thead>
 						<tr className="bg-surface-2 border-line border-b">
 							<th className="text-muted w-[14%] px-2 py-2 text-left text-xs font-semibold uppercase">
@@ -1195,8 +1250,11 @@ function BankDraftEditor({
 							<th className="text-muted w-[22%] px-2 py-2 text-left text-xs font-semibold uppercase">
 								Title
 							</th>
-							<th className="text-muted w-[14%] px-2 py-2 text-left text-xs font-semibold uppercase">
+							<th className="text-muted w-[12%] px-2 py-2 text-left text-xs font-semibold uppercase">
 								Bank / app
+							</th>
+							<th className="text-muted w-[12%] px-2 py-2 text-left text-xs font-semibold uppercase">
+								Source
 							</th>
 							<th className="text-muted w-24 px-2 py-2 text-right text-xs font-semibold uppercase">
 								Amount
@@ -1242,6 +1300,19 @@ function BankDraftEditor({
 											onChange={(e) => setEntry(row._key, 'merchant', e.target.value)}
 											placeholder="Bank / app"
 										/>
+									</td>
+									<td className="p-1">
+										<select
+											className={TABLE_INPUT}
+											value={row.source_id || ''}
+											onChange={(e) => setEntry(row._key, 'source_id', e.target.value)}
+										>
+											{sourceOptions.map((s) => (
+												<option key={s.id} value={s.id}>
+													{s.name}
+												</option>
+											))}
+										</select>
 									</td>
 									<td className="p-1">
 										<input

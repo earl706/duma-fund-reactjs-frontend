@@ -1,16 +1,14 @@
 import { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation } from '@tanstack/react-query';
 import { LogOut, Search, Settings as SettingsIcon, Shield } from 'lucide-react';
 
 import { patch } from '../lib/api';
 import { isMobileApp } from '../lib/desktop';
-import { updateStartingBalance, useFinanceBalance } from '../lib/resources';
-import { formatCost } from '../lib/format';
 import { toast } from '../stores/toastStore';
 import { useAuthStore } from '../stores/authStore';
-import { useIsProfileOwner, useProfileStore } from '../stores/profileStore';
 import { ProfileSettingsCard } from '../components/finance/ProfileSettingsCard';
+import { WalletSourcesCard } from '../components/finance/WalletSourcesCard';
 import { InviteList } from '../components/layout/InviteInbox';
 import { ProfileSwitcher } from '../components/finance/ProfileSwitcher';
 import { LLM_PROVIDERS, useLlmStore } from '../stores/llmStore';
@@ -78,20 +76,22 @@ function SettingsTabBar({ tabs, active, onChange }) {
 }
 
 function SettingsPanel({ id, active, children }) {
+	const selected = active === id;
 	return (
 		<div
 			role="tabpanel"
 			id={`settings-panel-${id}`}
 			aria-labelledby={`settings-tab-${id}`}
-			hidden={active !== id}
+			hidden={!selected}
 		>
-			{children}
+			{/* Unmount inactive panels so password fields (Receipt AI) are not in the DOM
+			    and Chrome does not treat Wallet edits as a login form. */}
+			{selected ? children : null}
 		</div>
 	);
 }
 
 export default function SettingsPage() {
-	const queryClient = useQueryClient();
 	const [searchParams, setSearchParams] = useSearchParams();
 	const user = useAuthStore((s) => s.user);
 	const logout = useAuthStore((s) => s.logout);
@@ -112,17 +112,10 @@ export default function SettingsPage() {
 	} = useLlmStore();
 	const [mfaSetupOpen, setMfaSetupOpen] = useState(false);
 	const [newEmail, setNewEmail] = useState('');
-	const { data: balance } = useFinanceBalance();
-	const isOwner = useIsProfileOwner();
-	const profileName = useProfileStore((s) => s.activeProfile()?.name);
-	const [startingDraft, setStartingDraft] = useState(null);
 	const [openaiKeyDraft, setOpenaiKeyDraft] = useState(null);
 	const [openaiModelDraft, setOpenaiModelDraft] = useState(null);
 	const [geminiKeyDraft, setGeminiKeyDraft] = useState(null);
 	const [geminiModelDraft, setGeminiModelDraft] = useState(null);
-
-	const startingValue =
-		startingDraft != null ? startingDraft : (balance?.starting_balance ?? '0.00');
 
 	const saveName = useMutation({
 		mutationFn: (body) => patch('/auth/me/', body),
@@ -131,16 +124,6 @@ export default function SettingsPage() {
 			toast.success('Profile updated.');
 		},
 		onError: () => toast.error('Could not update profile.')
-	});
-
-	const saveStarting = useMutation({
-		mutationFn: (value) => updateStartingBalance(value),
-		onSuccess: () => {
-			toast.success('Starting balance updated.');
-			setStartingDraft(null);
-			queryClient.invalidateQueries({ queryKey: ['finance-balance'] });
-		},
-		onError: () => toast.error('Could not update starting balance.')
 	});
 
 	const changeEmail = useMutation({
@@ -179,7 +162,7 @@ export default function SettingsPage() {
 
 			<SettingsTabBar tabs={tabs} active={activeTab} onChange={setActiveTab} />
 
-			<div className="mx-auto max-w-2xl">
+			<div className="mx-auto max-w-7xl">
 				{mobile && (
 					<SettingsPanel id="shortcuts" active={activeTab}>
 						<Card>
@@ -199,105 +182,74 @@ export default function SettingsPage() {
 					</SettingsPanel>
 				)}
 				<SettingsPanel id="account" active={activeTab}>
-				<Card>
-					<CardHeader title="Account" />
-					<CardBody className="space-y-4">
-						<div className="flex items-center gap-3">
-							<Avatar name={user?.full_name || user?.email} src={user?.avatar_url} size={48} />
-							<div>
-								<p className="text-fg font-medium">{user?.full_name || 'Unnamed'}</p>
-								<p className="text-muted text-sm">{user?.email}</p>
+					<Card>
+						<CardHeader title="Account" />
+						<CardBody className="space-y-4">
+							<div className="flex items-center gap-3">
+								<Avatar name={user?.full_name || user?.email} src={user?.avatar_url} size={48} />
+								<div>
+									<p className="text-fg font-medium">{user?.full_name || 'Unnamed'}</p>
+									<p className="text-muted text-sm">{user?.email}</p>
+								</div>
 							</div>
-						</div>
-						<Input
-							label="Full name"
-							defaultValue={user?.full_name}
-							onBlur={(e) =>
-								e.target.value !== user?.full_name && saveName.mutate({ full_name: e.target.value })
-							}
-						/>
-						<div className="space-y-2">
 							<Input
-								label="Email"
-								type="email"
-								value={newEmail}
-								onChange={(e) => setNewEmail(e.target.value)}
-								placeholder={user?.email}
+								label="Full name"
+								defaultValue={user?.full_name}
+								onBlur={(e) =>
+									e.target.value !== user?.full_name &&
+									saveName.mutate({ full_name: e.target.value })
+								}
 							/>
-							<Button
-								type="button"
-								variant="secondary"
-								className="w-full"
-								loading={changeEmail.isPending}
-								disabled={!newEmail || newEmail.toLowerCase() === user?.email?.toLowerCase()}
-								onClick={() => changeEmail.mutate(newEmail)}
-							>
-								Change email
-							</Button>
-							<p className="text-muted text-xs">
-								We will send a confirmation link to the new address before it becomes active.
-							</p>
-						</div>
-						<div>
-							<span className="text-fg mb-1.5 block text-sm font-medium">Theme</span>
-							<div className="flex gap-2">
-								{['light', 'dark'].map((t) => (
-									<button
-										key={t}
-										onClick={() => setTheme(t)}
-										className={`flex-1 cursor-pointer rounded-md border px-4 py-2 text-sm capitalize ${
-											theme === t ? 'border-primary text-primary' : 'border-line text-muted'
-										}`}
-									>
-										{t}
-									</button>
-								))}
+							<div className="space-y-2">
+								<Input
+									label="Email"
+									type="email"
+									value={newEmail}
+									onChange={(e) => setNewEmail(e.target.value)}
+									placeholder={user?.email}
+								/>
+								<Button
+									type="button"
+									variant="secondary"
+									className="w-full"
+									loading={changeEmail.isPending}
+									disabled={!newEmail || newEmail.toLowerCase() === user?.email?.toLowerCase()}
+									onClick={() => changeEmail.mutate(newEmail)}
+								>
+									Change email
+								</Button>
+								<p className="text-muted text-xs">
+									We will send a confirmation link to the new address before it becomes active.
+								</p>
 							</div>
-						</div>
-						<Button variant="danger" onClick={logout} className="w-full">
-							<LogOut size={16} /> Sign out
-						</Button>
-					</CardBody>
-				</Card>
+							<div>
+								<span className="text-fg mb-1.5 block text-sm font-medium">Theme</span>
+								<div className="flex gap-2">
+									{['light', 'dark'].map((t) => (
+										<button
+											key={t}
+											onClick={() => setTheme(t)}
+											className={`flex-1 cursor-pointer rounded-md border px-4 py-2 text-sm capitalize ${
+												theme === t ? 'border-primary text-primary' : 'border-line text-muted'
+											}`}
+										>
+											{t}
+										</button>
+									))}
+								</div>
+							</div>
+							<Button variant="danger" onClick={logout} className="w-full">
+								<LogOut size={16} /> Sign out
+							</Button>
+						</CardBody>
+					</Card>
 				</SettingsPanel>
 
 				<SettingsPanel id="profiles" active={activeTab}>
 					<ProfileSettingsCard />
 				</SettingsPanel>
 				<SettingsPanel id="wallet" active={activeTab}>
-					<Card>
-						<CardHeader
-							title="Wallet"
-							subtitle={
-								balance
-									? `${profileName || 'Profile'} · current ${formatCost(balance.balance)}`
-									: 'Starting balance for the active profile'
-							}
-						/>
-						<CardBody className="space-y-3">
-							<Input
-								label="Starting balance"
-								type="number"
-								step="0.01"
-								value={startingValue}
-								onChange={(e) => isOwner && setStartingDraft(e.target.value)}
-								onBlur={() => {
-									if (!isOwner || startingDraft == null) return;
-									if (String(startingDraft) === String(balance?.starting_balance)) {
-										setStartingDraft(null);
-										return;
-									}
-									saveStarting.mutate(startingDraft);
-								}}
-								disabled={!isOwner}
-							/>
-							<p className="text-muted text-xs">
-								{isOwner
-									? 'Balance = starting + income − expense + transfers.'
-									: 'Only the profile owner can change the starting balance.'}
-							</p>
-						</CardBody>
-					</Card>
+					<WalletSourcesCard />
 				</SettingsPanel>
 
 				<SettingsPanel id="security" active={activeTab}>
@@ -345,7 +297,8 @@ export default function SettingsPage() {
 									<Input
 										label="OpenAI API key"
 										type="password"
-										autoComplete="off"
+										autoComplete="new-password"
+										name="openai-api-key"
 										value={openaiKeyDraft != null ? openaiKeyDraft : openaiApiKey}
 										onChange={(e) => setOpenaiKeyDraft(e.target.value)}
 										onBlur={() => {
@@ -380,7 +333,8 @@ export default function SettingsPage() {
 									<Input
 										label="Gemini API key"
 										type="password"
-										autoComplete="off"
+										autoComplete="new-password"
+										name="gemini-api-key"
 										value={geminiKeyDraft != null ? geminiKeyDraft : geminiApiKey}
 										onChange={(e) => setGeminiKeyDraft(e.target.value)}
 										onBlur={() => {
@@ -412,10 +366,6 @@ export default function SettingsPage() {
 								</>
 							)}
 
-							<p className="text-muted text-xs">
-								Stored in this browser and sent with receipt scans (over HTTPS). When set for the
-								selected provider, these override the server env keys.
-							</p>
 							<Button
 								type="button"
 								variant="secondary"

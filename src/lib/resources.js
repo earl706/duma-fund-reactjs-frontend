@@ -2,9 +2,13 @@ import { useQuery } from '@tanstack/react-query';
 
 import { createNestedResourceHooks, createResourceHooks } from '../hooks/useResource';
 import { useActiveProfileId } from '../stores/profileStore';
-import { get, patch } from './api';
+import { get } from './api';
 
 export const categoriesApi = createResourceHooks('finance-categories', '/finance/categories/');
+
+export const sourcesApi = createResourceHooks('finance-sources', '/finance/sources/');
+
+export const payeesApi = createResourceHooks('finance-payees', '/finance/payees/');
 
 export const transactionsApi = createResourceHooks(
 	'finance-transactions',
@@ -48,10 +52,6 @@ export function useFinanceBreakdown(params = {}, options = {}) {
 		enabled: profileId != null && enabled !== false,
 		...rest
 	});
-}
-
-export async function updateStartingBalance(starting_balance) {
-	return patch('/finance/balance/', { starting_balance });
 }
 
 /** @deprecated Use useFinanceAnalytics */

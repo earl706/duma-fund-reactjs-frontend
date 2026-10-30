@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowLeftRight, Plus, Search, SlidersHorizontal, Trash2 } from 'lucide-react';
+import { ArrowLeftRight, BookUser, Plus, Search, SlidersHorizontal, Trash2 } from 'lucide-react';
 
 import { cn, formatCost, formatDate } from '../../lib/format';
 import { Button, EmptyState, LoadingScreen, Modal } from '../ui';
@@ -43,6 +43,7 @@ function FilterChip({ selected, onClick, children }) {
 export function MobileTransactionsView({
 	balance,
 	rows,
+	sourcesById,
 	isLoading,
 	isError,
 	search,
@@ -51,7 +52,8 @@ export function MobileTransactionsView({
 	setFilter,
 	onAdd,
 	adding,
-	onRequestDelete
+	onRequestDelete,
+	onAccounts
 }) {
 	const [filterOpen, setFilterOpen] = useState(false);
 	const typeValue = filters.type || '';
@@ -85,6 +87,17 @@ export function MobileTransactionsView({
 						aria-label="Search transactions"
 					/>
 				</label>
+				{onAccounts && (
+					<Button
+						variant="secondary"
+						size="icon"
+						className="h-11 w-11 shrink-0 rounded-full"
+						onClick={onAccounts}
+						aria-label="Accounts information"
+					>
+						<BookUser size={18} />
+					</Button>
+				)}
 				<Button
 					variant="secondary"
 					size="icon"
@@ -142,6 +155,9 @@ export function MobileTransactionsView({
 										{row.title || 'Untitled'}
 									</p>
 									<p className="text-muted mt-0.5 truncate text-xs">
+										{sourcesById?.get(row.source)?.name
+											? `${sourcesById.get(row.source).name} · `
+											: ''}
 										{row.merchant || 'Unknown'}
 										{row.date_effective ? ` · ${formatDate(row.date_effective)}` : ''}
 										{row.status === 'archived' ? ' · Archived' : ''}

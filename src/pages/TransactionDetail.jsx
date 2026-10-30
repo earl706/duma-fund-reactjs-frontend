@@ -3,7 +3,8 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, ArrowLeftRight, ImageDown, Plus, ScanLine, Star } from 'lucide-react';
 
-import { categoriesApi, transactionItemsApi, transactionsApi } from '../lib/resources';
+import { sourceSelectOptions } from '../lib/balanceSources';
+import { categoriesApi, sourcesApi, transactionItemsApi, transactionsApi } from '../lib/resources';
 import { post } from '../lib/api';
 import { fetchAllPages } from '../lib/fetchAll';
 import { isMobileApp } from '../lib/desktop';
@@ -34,7 +35,8 @@ import {
 	ListToolbar,
 	LoadingScreen,
 	Modal,
-	RecordInfoModal
+	RecordInfoModal,
+	Select
 } from '../components/ui';
 
 const DEFAULT_ORDERING = 'title';
@@ -89,6 +91,12 @@ export default function TransactionDetailPage() {
 	const { data: txn, isLoading: txnLoading, isError: txnError } = transactionsApi.useDetail(txnId);
 	const { data: categoriesData } = categoriesApi.useList({ page_size: 100, kind: 'expense' });
 	const { data: incomeCatsData } = categoriesApi.useList({ page_size: 100, kind: 'income' });
+	const { data: sourcesData } = sourcesApi.useList({ page_size: 100 });
+	const sources = useMemo(() => sourcesData?.results || [], [sourcesData?.results]);
+	const sourceOptions = useMemo(
+		() => sourceSelectOptions(sources, txn?.source),
+		[sources, txn?.source]
+	);
 	const expenseCategories = useMemo(() => categoriesData?.results || [], [categoriesData?.results]);
 	const incomeCategories = useMemo(() => incomeCatsData?.results || [], [incomeCatsData?.results]);
 	const defaultCategoryId =
@@ -398,6 +406,10 @@ export default function TransactionDetailPage() {
 				icon={ArrowLeftRight}
 				description={`${txn.type} · ${formatCost(txn.amount)}${
 					txn.date_effective ? ` · ${formatDate(txn.date_effective)}` : ''
+				}${
+					sources.find((s) => s.id === txn.source)
+						? ` · ${sources.find((s) => s.id === txn.source).name}`
+						: ''
 				}`}
 				actions={
 					isExpense ? (
@@ -424,6 +436,28 @@ export default function TransactionDetailPage() {
 					) : null
 				}
 			/>
+
+			{sourceOptions.length > 0 && (
+				<div className="border-line bg-surface mb-4 max-w-xs rounded-md border px-3 py-2">
+					<Select
+						label="Source"
+						value={txn.source != null ? String(txn.source) : ''}
+						disabled={!canEdit || updateTxn.isPending}
+						onChange={(e) => {
+							const next = Number(e.target.value);
+							if (!next || next === txn.source) return;
+							updateTxn.mutate({ id: txn.id, source: next });
+						}}
+					>
+						{sourceOptions.map((s) => (
+							<option key={s.id} value={s.id}>
+								{s.name}
+								{s.status === 'archived' ? ' (archived)' : ''}
+							</option>
+						))}
+					</Select>
+				</div>
+			)}
 
 			{txn.receipt_image && (
 				<p className="mb-3">

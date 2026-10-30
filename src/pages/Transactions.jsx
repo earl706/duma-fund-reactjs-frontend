@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeftRight, FileDown, FileUp, Plus, ScanLine } from 'lucide-react';
+import { ArrowLeftRight, BookUser, FileDown, FileUp, Plus, ScanLine } from 'lucide-react';
 
-import { categoriesApi, transactionsApi, useFinanceBalance } from '../lib/resources';
+import { cashSourceId, resolveSourceId, sourceSelectOptions } from '../lib/balanceSources';
+import { categoriesApi, sourcesApi, transactionsApi, useFinanceBalance } from '../lib/resources';
 import { del, post } from '../lib/api';
 import { fetchAllPages } from '../lib/fetchAll';
 import { isMobileApp } from '../lib/desktop';
@@ -22,6 +23,7 @@ import {
 import { toast } from '../stores/toastStore';
 import { useActiveProfileId, useCanEditLedger, useProfileStore } from '../stores/profileStore';
 import { useListControls } from '../hooks/useListControls';
+import { AccountsInformationModal } from '../components/finance/AccountsInformationModal';
 import { ReceiptImportModal } from '../components/finance/ReceiptImportModal';
 import { MobileTransactionsView } from '../components/finance/MobileTransactionsView';
 import {
@@ -98,6 +100,7 @@ export default function TransactionsPage() {
 	const profileId = useActiveProfileId();
 	const { data: categoriesData } = categoriesApi.useList({ page_size: 100, kind: 'expense' });
 	const { data: incomeCats } = categoriesApi.useList({ page_size: 100, kind: 'income' });
+	const { data: sourcesData } = sourcesApi.useList({ page_size: 100 });
 
 	const expenseCategories = useMemo(() => categoriesData?.results || [], [categoriesData?.results]);
 	const incomeCategories = useMemo(() => incomeCats?.results || [], [incomeCats?.results]);
@@ -119,6 +122,21 @@ export default function TransactionsPage() {
 	const incomeSelectOptions = useMemo(
 		() => incomeCategories.map((c) => ({ value: String(c.id), label: c.name })),
 		[incomeCategories]
+	);
+
+	const sources = useMemo(() => sourcesData?.results || [], [sourcesData?.results]);
+	const sourcesById = useMemo(() => {
+		const map = new Map();
+		sources.forEach((s) => map.set(s.id, s));
+		return map;
+	}, [sources]);
+	const sourceSelectOpts = useMemo(
+		() =>
+			sourceSelectOptions(sources).map((s) => ({
+				value: String(s.id),
+				label: s.name
+			})),
+		[sources]
 	);
 
 	const { search, setSearch, ordering, setOrdering, filters, setFilter, queryParams } =
@@ -152,11 +170,18 @@ export default function TransactionsPage() {
 	const [bulkDeleting, setBulkDeleting] = useState(false);
 	const [duplicating, setDuplicating] = useState(false);
 	const [scanOpen, setScanOpen] = useState(false);
+	const [accountsOpen, setAccountsOpen] = useState(false);
 	const [selectedIds, setSelectedIds] = useState([]);
 	const [importDraft, setImportDraft] = useState(null);
 	const [csvBusy, setCsvBusy] = useState(false);
 	const [csvProgress, setCsvProgress] = useState('');
+	/** Row id → column keys waiting on PATCH (optimistic UI + spinner). */
+	const [pendingCells, setPendingCells] = useState({});
 	const fileInputRef = useRef(null);
+	const txnListKey = useMemo(
+		() => ['finance-transactions', 'all', profileId, listParams],
+		[profileId, listParams]
+	);
 	const onSelectionChange = useCallback((ids) => setSelectedIds(ids), []);
 	const profileName = useProfileStore(
 		(s) => s.profiles.find((p) => p.id === s.activeProfileId)?.name
@@ -230,6 +255,7 @@ export default function TransactionsPage() {
 				merchant: row.merchant || '',
 				amount: row.amount ?? '0.00',
 				note: row.note || '',
+				source: row.source ?? undefined,
 				category: isTransfer ? null : (row.category ?? null),
 				categories: isTransfer ? [] : categoryIds,
 				status: row.status || 'active',
@@ -292,12 +318,14 @@ export default function TransactionsPage() {
 		setCsvBusy(true);
 		setCsvProgress('Preparing export…');
 		try {
-			const [expenseCats, incomeCats] = await Promise.all([
+			const [expenseCats, incomeCats, sourceRows] = await Promise.all([
 				fetchAllPages('/finance/categories/', { kind: 'expense' }),
-				fetchAllPages('/finance/categories/', { kind: 'income' })
+				fetchAllPages('/finance/categories/', { kind: 'income' }),
+				fetchAllPages('/finance/sources/')
 			]);
 			const byId = new Map();
 			[...expenseCats, ...incomeCats].forEach((c) => byId.set(c.id, c));
+			const sourceNames = new Map(sourceRows.map((s) => [s.id, s.name]));
 			const records = await mapLimit(exportRows, 6, async (row) => {
 				const names =
 					row.type === 'transfer_in' || row.type === 'transfer_out'
@@ -319,6 +347,7 @@ export default function TransactionsPage() {
 					merchant: row.merchant || '',
 					amount: row.amount ?? '0.00',
 					note: row.note || '',
+					sourceName: sourceNames.get(row.source) || '',
 					categoryNames: names,
 					status: row.status || 'active',
 					date_created: row.date_created || '',
@@ -387,6 +416,7 @@ export default function TransactionsPage() {
 			merchant: draft.merchant || '',
 			amount: draft.amount ?? '0.00',
 			note: draft.note || '',
+			source: draft.source ?? undefined,
 			category: isTransfer ? null : resolved.category,
 			categories: draft.type === 'expense' ? resolved.categories : [],
 			status: draft.status || 'active',
@@ -421,11 +451,13 @@ export default function TransactionsPage() {
 		const drafts = importDraft.transactions;
 		try {
 			setCsvProgress('Loading categories…');
-			const [expenseCats, incomeCats] = await Promise.all([
+			const [expenseCats, incomeCats, sourceRows] = await Promise.all([
 				fetchAllPages('/finance/categories/', { kind: 'expense' }),
-				fetchAllPages('/finance/categories/', { kind: 'income' })
+				fetchAllPages('/finance/categories/', { kind: 'income' }),
+				fetchAllPages('/finance/sources/')
 			]);
 			const categoryLists = [...expenseCats, ...incomeCats];
+			const cashId = cashSourceId(sourceRows);
 
 			let existingIds = [];
 			if (mode === 'replace') {
@@ -439,7 +471,16 @@ export default function TransactionsPage() {
 			for (let i = 0; i < drafts.length; i += 1) {
 				setCsvProgress(`Importing ${i + 1} of ${drafts.length}…`);
 				try {
-					await createImportedTransaction(drafts[i], categoryLists);
+					const draft = drafts[i];
+					const sourceId = resolveSourceId(draft.sourceName, sourceRows, cashId);
+					if (
+						draft.sourceName &&
+						sourceId === cashId &&
+						draft.sourceName.trim().toLowerCase() !== 'cash'
+					) {
+						toast.error(`Unknown source "${draft.sourceName}"; using Cash.`);
+					}
+					await createImportedTransaction({ ...draft, source: sourceId }, categoryLists);
 					created += 1;
 				} catch (err) {
 					failures.push(drafts[i].title || `Row ${i + 1}`);
@@ -479,6 +520,27 @@ export default function TransactionsPage() {
 		}
 	};
 
+	const markPendingCells = (rowId, keys) => {
+		if (!keys.length) return;
+		setPendingCells((prev) => ({
+			...prev,
+			[rowId]: [...new Set([...(prev[rowId] || []), ...keys])]
+		}));
+	};
+
+	const clearPendingCells = (rowId, keys) => {
+		setPendingCells((prev) => {
+			const current = prev[rowId];
+			if (!current?.length) return prev;
+			const drop = new Set(keys);
+			const nextFields = current.filter((k) => !drop.has(k));
+			const next = { ...prev };
+			if (nextFields.length) next[rowId] = nextFields;
+			else delete next[rowId];
+			return next;
+		});
+	};
+
 	const commitCell = ({ id, field, value, patch }) => {
 		const body = patch ? { id, ...patch } : { id, [field]: value };
 
@@ -499,6 +561,10 @@ export default function TransactionsPage() {
 			else delete body.category;
 		} else if (body.category != null) {
 			body.category = Number(body.category);
+		}
+
+		if (body.source != null && body.source !== '') {
+			body.source = Number(body.source);
 		}
 
 		// Type changes must carry a compatible category (or none for transfers).
@@ -532,7 +598,26 @@ export default function TransactionsPage() {
 			}
 		}
 
-		updateTxn.mutate(body);
+		const { id: rowId, ...optimistic } = body;
+		const pendingKeys = new Set(Object.keys(optimistic));
+		if (pendingKeys.has('category') || pendingKeys.has('categories')) {
+			pendingKeys.add('categories');
+		}
+		const uiKeys = [...pendingKeys];
+
+		markPendingCells(rowId, uiKeys);
+		queryClient.setQueryData(txnListKey, (old) => {
+			if (!Array.isArray(old)) return old;
+			return old.map((row) => (row.id === rowId ? { ...row, ...optimistic } : row));
+		});
+
+		updateTxn.mutate(body, {
+			onError: () => {
+				clearPendingCells(rowId, uiKeys);
+				queryClient.invalidateQueries({ queryKey: ['finance-transactions'] });
+			},
+			onSettled: () => clearPendingCells(rowId, uiKeys)
+		});
 	};
 
 	const columns = useMemo(
@@ -551,9 +636,18 @@ export default function TransactionsPage() {
 				editable: true,
 				type: 'select',
 				options: TYPE_OPTIONS,
-				className: 'w-[12%]'
+				className: 'w-[11%]'
 			},
-			{ key: 'title', label: 'Title', editable: true, className: 'w-[20%]', purchaseHint: true },
+			{
+				key: 'source',
+				label: 'Source',
+				editable: true,
+				type: 'select',
+				options: sourceSelectOpts,
+				className: 'w-[11%]',
+				getDisplay: (row) => sourcesById.get(row.source)?.name || '—'
+			},
+			{ key: 'title', label: 'Title', editable: true, className: 'w-[18%]', purchaseHint: true },
 			{
 				key: 'merchant',
 				label: 'Store',
@@ -637,7 +731,7 @@ export default function TransactionsPage() {
 				className: 'w-[6.75rem]'
 			}
 		],
-		[allCategories, expenseSelectOptions, incomeSelectOptions]
+		[allCategories, expenseSelectOptions, incomeSelectOptions, sourceSelectOpts, sourcesById]
 	);
 
 	const infoFields = (txn) => {
@@ -655,6 +749,7 @@ export default function TransactionsPage() {
 			{ label: 'Title', value: txn.title || '—' },
 			{ label: 'Store', value: txn.merchant || 'Unknown' },
 			{ label: 'Type', value: txn.type },
+			{ label: 'Source', value: sourcesById.get(txn.source)?.name || '—' },
 			{
 				label: 'Amount',
 				value: <SignedAmount amount={txn.amount} type={txn.type} />
@@ -729,6 +824,7 @@ export default function TransactionsPage() {
 				<MobileTransactionsView
 					balance={balance}
 					rows={rows}
+					sourcesById={sourcesById}
 					isLoading={isLoading}
 					isError={isError}
 					search={search}
@@ -738,7 +834,9 @@ export default function TransactionsPage() {
 					onAdd={canEdit ? addExpense : undefined}
 					adding={createTxn.isPending}
 					onRequestDelete={canEdit ? setDeleteTarget : undefined}
+					onAccounts={() => setAccountsOpen(true)}
 				/>
+				<AccountsInformationModal open={accountsOpen} onClose={() => setAccountsOpen(false)} />
 				{deleteDialog}
 			</>
 		);
@@ -756,6 +854,9 @@ export default function TransactionsPage() {
 				}
 				actions={
 					<div className="flex flex-wrap gap-2">
+						<Button variant="secondary" onClick={() => setAccountsOpen(true)}>
+							<BookUser size={16} /> Accounts
+						</Button>
 						<Button variant="secondary" onClick={exportCsv} loading={csvBusy && !importDraft}>
 							<FileDown size={16} /> Export
 						</Button>
@@ -821,6 +922,7 @@ export default function TransactionsPage() {
 					readOnly={!canEdit}
 					adding={createTxn.isPending || duplicating}
 					saving={updateTxn.isPending || duplicating}
+					pendingCells={pendingCells}
 					autoEdit={autoEdit}
 					addLabel="New transaction"
 					emptyMessage="No transactions yet. Scan a receipt or add an expense."
@@ -882,7 +984,7 @@ export default function TransactionsPage() {
 				open={Boolean(importDraft)}
 				onClose={() => !csvBusy && setImportDraft(null)}
 				title="Import transactions"
-				size="md"
+				size="xl"
 				footer={
 					<>
 						<Button variant="secondary" onClick={() => setImportDraft(null)} disabled={csvBusy}>
@@ -933,6 +1035,8 @@ export default function TransactionsPage() {
 					</div>
 				) : null}
 			</Modal>
+
+			<AccountsInformationModal open={accountsOpen} onClose={() => setAccountsOpen(false)} />
 
 			{!mobile && (
 				<ReceiptImportModal

@@ -148,6 +148,7 @@ export default function DashboardPage() {
 	}, [series, period]);
 
 	const { net } = flowTotals(data?.totals);
+	const { moneyIn, moneyOut } = flowTotals(balance?.totals);
 
 	const onPeriod = (next) => {
 		setPeriod(next);
@@ -165,8 +166,8 @@ export default function DashboardPage() {
 					period={period}
 					onPeriod={onPeriod}
 					rangeLabel={formatRangeLabel(data?.start, data?.end)}
-					income={data?.totals?.income ?? '0'}
-					expense={data?.totals?.expense ?? data?.balance_composition?.spent ?? '0'}
+					moneyIn={moneyIn}
+					moneyOut={moneyOut}
 					net={net}
 					chips={chips}
 					selectedChip={selectedChip}
