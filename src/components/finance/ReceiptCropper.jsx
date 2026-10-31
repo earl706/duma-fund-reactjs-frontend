@@ -1,13 +1,10 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 
-import { isMobileApp } from '../../lib/desktop';
 import { cn } from '../../lib/format';
 import { isConvexQuad } from '../../lib/cropImage';
 
 const MIN_SIDE = 24;
 const HANDLE_HIT = 20;
-const NARROW_MQ = '(max-width: 767px)';
-const PAD_FRACTION = 0.08;
 
 const CORNER_IDS = ['tl', 'tr', 'br', 'bl'];
 const EDGE_IDS = [
@@ -28,12 +25,7 @@ function clampCorner(p, naturalW, naturalH) {
 	};
 }
 
-function isPaddedInitialCrop() {
-	if (typeof window === 'undefined') return false;
-	if (isMobileApp()) return true;
-	return window.matchMedia(NARROW_MQ).matches;
-}
-
+/** Tiny inset so the stroke stays visible on the bitmap edges. */
 function edgeTightInsets(naturalW, naturalH) {
 	return {
 		x: Math.min(4, Math.max(1, Math.floor(naturalW * 0.005))),
@@ -41,20 +33,8 @@ function edgeTightInsets(naturalW, naturalH) {
 	};
 }
 
-function paddedInsets(naturalW, naturalH) {
-	const pad = Math.max(MIN_SIDE, Math.round(Math.min(naturalW, naturalH) * PAD_FRACTION));
-	const maxX = Math.max(1, Math.floor((naturalW - MIN_SIDE) / 2) - 1);
-	const maxY = Math.max(1, Math.floor((naturalH - MIN_SIDE) / 2) - 1);
-	return {
-		x: Math.min(pad, maxX),
-		y: Math.min(pad, maxY)
-	};
-}
-
-function initialCorners(naturalW, naturalH, padded) {
-	const { x: insetX, y: insetY } = padded
-		? paddedInsets(naturalW, naturalH)
-		: edgeTightInsets(naturalW, naturalH);
+function initialCorners(naturalW, naturalH) {
+	const { x: insetX, y: insetY } = edgeTightInsets(naturalW, naturalH);
 	return [
 		{ x: insetX, y: insetY },
 		{ x: naturalW - 1 - insetX, y: insetY },
@@ -80,32 +60,29 @@ function quadMinSide(corners) {
 }
 
 /**
- * object-fit: contain paints the bitmap in a letterboxed rect inside the <img>
- * element. getBoundingClientRect() alone is the element box — wrong for mapping.
+ * Contain the bitmap in the stage. Letterbox bars stay outside the image box;
+ * the crop outline maps only to the bitmap.
  */
-function measureContainedLayout(stage, img, naturalW, naturalH) {
-	if (!stage || !img || !naturalW || !naturalH) return null;
+function measureContainInStage(stage, naturalW, naturalH) {
+	if (!stage || !naturalW || !naturalH) return null;
 	const stageRect = stage.getBoundingClientRect();
-	const elemRect = img.getBoundingClientRect();
-	const elemW = elemRect.width;
-	const elemH = elemRect.height;
-	if (elemW < 1 || elemH < 1) return null;
+	const stageW = stageRect.width;
+	const stageH = stageRect.height;
+	if (stageW < 1 || stageH < 1) return null;
 
-	const scale = Math.min(elemW / naturalW, elemH / naturalH);
+	const scale = Math.min(stageW / naturalW, stageH / naturalH);
 	const displayW = naturalW * scale;
 	const displayH = naturalH * scale;
-	const offsetX = elemRect.left - stageRect.left + (elemW - displayW) / 2;
-	const offsetY = elemRect.top - stageRect.top + (elemH - displayH) / 2;
 
 	return {
-		offsetX,
-		offsetY,
+		offsetX: (stageW - displayW) / 2,
+		offsetY: (stageH - displayH) / 2,
 		displayW,
 		displayH,
 		naturalW,
 		naturalH,
-		stageW: stageRect.width,
-		stageH: stageRect.height
+		stageW,
+		stageH
 	};
 }
 
@@ -114,9 +91,9 @@ function measureContainedLayout(stage, img, naturalW, naturalH) {
  * Corners stay inside the image; output is { corners: [tl, tr, br, bl] }
  * in natural image pixels for perspective warp.
  *
- * Narrow / iOS viewports start ~8% inset so handles sit inside the photo
- * and can be dragged toward the edges. That default is not reported as a
- * crop — Analyze still sends the full image until the user moves a handle.
+ * Initial quad is edge-tight to the bitmap (not letterbox bars). That default
+ * is not reported as a crop — Analyze still sends the full image until the
+ * user moves a handle.
  */
 export function ReceiptCropper({
 	imageSrc,
@@ -125,7 +102,6 @@ export function ReceiptCropper({
 	className
 }) {
 	const stageRef = useRef(null);
-	const imgRef = useRef(null);
 	const dragRef = useRef(null);
 	const initialCornersRef = useRef(initialCornersProp);
 	const dirtyRef = useRef(Boolean(initialCornersProp));
@@ -143,23 +119,16 @@ export function ReceiptCropper({
 	);
 
 	const measureLayout = useCallback(() => {
-		const next = measureContainedLayout(
-			stageRef.current,
-			imgRef.current,
-			naturalSize?.w,
-			naturalSize?.h
-		);
+		const next = measureContainInStage(stageRef.current, naturalSize?.w, naturalSize?.h);
 		if (next) setLayout(next);
 	}, [naturalSize]);
 
 	useEffect(() => {
 		measureLayout();
 		const stage = stageRef.current;
-		const img = imgRef.current;
 		if (!stage || typeof ResizeObserver === 'undefined') return undefined;
 		const ro = new ResizeObserver(() => measureLayout());
 		ro.observe(stage);
-		if (img) ro.observe(img);
 		window.addEventListener('resize', measureLayout);
 		return () => {
 			ro.disconnect();
@@ -222,10 +191,10 @@ export function ReceiptCropper({
 		dirtyRef.current = hasSaved;
 		const start = hasSaved
 			? saved.map((p) => clampCorner({ x: Number(p.x), y: Number(p.y) }, w, h))
-			: initialCorners(w, h, isPaddedInitialCrop());
+			: initialCorners(w, h);
 		setCorners(start);
 		requestAnimationFrame(() => {
-			const next = measureContainedLayout(stageRef.current, img, w, h);
+			const next = measureContainInStage(stageRef.current, w, h);
 			if (next) setLayout(next);
 		});
 	};
@@ -293,6 +262,8 @@ export function ReceiptCropper({
 	);
 
 	const polygonPoints = displayCorners ? displayCorners.map((p) => `${p.x},${p.y}`).join(' ') : '';
+	const stageW = Math.max(1, layout?.stageW || 1);
+	const stageH = Math.max(1, layout?.stageH || 1);
 
 	return (
 		<div
@@ -303,38 +274,41 @@ export function ReceiptCropper({
 			)}
 		>
 			<img
-				ref={imgRef}
 				src={imageSrc}
 				alt="Receipt to crop"
 				draggable={false}
 				onLoad={onImageLoad}
-				className="pointer-events-none absolute inset-0 h-full w-full object-contain"
+				className="pointer-events-none absolute max-w-none"
+				style={
+					layout
+						? {
+								left: layout.offsetX,
+								top: layout.offsetY,
+								width: layout.displayW,
+								height: layout.displayH
+							}
+						: { left: 0, top: 0, width: '100%', height: '100%', objectFit: 'contain', opacity: 0 }
+				}
 			/>
 
 			{displayCorners && layout && (
 				<svg
 					className="absolute inset-0 z-10 h-full w-full"
-					width="100%"
-					height="100%"
+					viewBox={`0 0 ${stageW} ${stageH}`}
+					preserveAspectRatio="none"
 					aria-hidden={false}
 				>
 					<defs>
 						<mask id={maskId}>
-							<rect
-								x="0"
-								y="0"
-								width={Math.max(1, layout.stageW)}
-								height={Math.max(1, layout.stageH)}
-								fill="white"
-							/>
+							<rect x="0" y="0" width={stageW} height={stageH} fill="white" />
 							<polygon points={polygonPoints} fill="black" />
 						</mask>
 					</defs>
 					<rect
 						x="0"
 						y="0"
-						width="100%"
-						height="100%"
+						width={stageW}
+						height={stageH}
 						fill="rgba(0,0,0,0.45)"
 						mask={`url(#${maskId})`}
 					/>

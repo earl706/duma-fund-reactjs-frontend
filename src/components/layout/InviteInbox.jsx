@@ -5,6 +5,7 @@ import { Mail } from 'lucide-react';
 import { useProfileStore } from '../../stores/profileStore';
 import { toast } from '../../stores/toastStore';
 import { Button } from '../ui';
+import { TopbarPopover } from './TopbarPopover';
 
 export function InviteBell() {
 	const pendingInvites = useProfileStore((s) => s.pendingInvites);
@@ -18,6 +19,7 @@ export function InviteBell() {
 				onClick={() => setOpen((v) => !v)}
 				className="text-muted hover:text-fg relative flex h-9 w-9 cursor-pointer items-center justify-center rounded-md"
 				aria-label="Profile invites"
+				aria-expanded={open}
 			>
 				<Mail size={18} />
 				{count > 0 && (
@@ -26,20 +28,15 @@ export function InviteBell() {
 					</span>
 				)}
 			</button>
-			{open && (
-				<>
-					<button
-						type="button"
-						className="fixed inset-0 z-40 cursor-default"
-						aria-label="Close invites"
-						onClick={() => setOpen(false)}
-					/>
-					<div className="border-line bg-surface absolute top-10 right-0 z-50 w-80 rounded-md border p-3 shadow-lg">
-						<p className="text-fg mb-2 text-sm font-semibold">Profile invites</p>
-						<InviteList onDone={() => setOpen(false)} />
-					</div>
-				</>
-			)}
+			<TopbarPopover
+				open={open}
+				onClose={() => setOpen(false)}
+				closeLabel="Close invites"
+				className="p-3"
+			>
+				<p className="text-fg mb-2 text-sm font-semibold">Profile invites</p>
+				<InviteList onDone={() => setOpen(false)} />
+			</TopbarPopover>
 		</div>
 	);
 }

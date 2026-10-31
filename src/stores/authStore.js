@@ -248,5 +248,10 @@ export const useAuthStore = create((set, get) => ({
 			pendingRemember: true,
 			pendingVerificationEmail: null
 		});
+	},
+
+	async deleteAccount() {
+		await api.delete('/auth/me/');
+		get().logout();
 	}
 }));

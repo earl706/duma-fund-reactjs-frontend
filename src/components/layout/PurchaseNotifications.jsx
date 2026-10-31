@@ -6,6 +6,7 @@ import { usePurchaseNotifications } from '../../lib/purchases';
 import { useAuthStore } from '../../stores/authStore';
 import { toast } from '../../stores/toastStore';
 import { Button } from '../ui';
+import { TopbarPopover } from './TopbarPopover';
 
 const DISMISS_KEY = 'dumafund.purchaseNotifDismissed';
 const SESSION_TOAST_KEY = 'dumafund.purchaseDueToast';
@@ -70,7 +71,7 @@ function NoteList({ notes, dismiss, onNavigate, emptyClassName }) {
 		return <p className={emptyClassName || 'text-muted px-3 py-4 text-sm'}>No alerts right now.</p>;
 	}
 	return (
-		<ul className="max-h-80 overflow-y-auto">
+		<ul>
 			{notes.map((n) => (
 				<li key={n.id} className="border-line border-b px-3 py-2 last:border-b-0">
 					<p className="text-fg text-sm">{n.message}</p>
@@ -104,22 +105,10 @@ function NoteList({ notes, dismiss, onNavigate, emptyClassName }) {
 /** Bell dropdown for the desktop topbar. */
 export function PurchaseBell() {
 	const [open, setOpen] = useState(false);
-	const panelRef = useRef(null);
 	const { notes, unread, dismiss } = useDismissedNotes();
 
-	useEffect(() => {
-		if (!open) return;
-		const onDoc = (e) => {
-			if (panelRef.current && !panelRef.current.contains(e.target)) {
-				setOpen(false);
-			}
-		};
-		document.addEventListener('mousedown', onDoc);
-		return () => document.removeEventListener('mousedown', onDoc);
-	}, [open]);
-
 	return (
-		<div className="relative" ref={panelRef}>
+		<div className="relative">
 			<Button
 				variant="ghost"
 				size="icon"
@@ -136,21 +125,23 @@ export function PurchaseBell() {
 					</span>
 				)}
 			</Button>
-			{open && (
-				<div className="border-line bg-surface absolute top-full right-0 z-50 mt-1 w-[min(100vw-2rem,22rem)] rounded-md border shadow-lg">
-					<div className="border-line flex items-center justify-between border-b px-3 py-2">
-						<span className="text-fg text-sm font-semibold">Regular buys</span>
-						<Link
-							to="/regular-buys"
-							className="text-primary text-xs hover:underline"
-							onClick={() => setOpen(false)}
-						>
-							Open page
-						</Link>
-					</div>
-					<NoteList notes={notes} dismiss={dismiss} onNavigate={() => setOpen(false)} />
+			<TopbarPopover
+				open={open}
+				onClose={() => setOpen(false)}
+				closeLabel="Close purchase notifications"
+			>
+				<div className="border-line flex items-center justify-between border-b px-3 py-2">
+					<span className="text-fg text-sm font-semibold">Regular buys</span>
+					<Link
+						to="/regular-buys"
+						className="text-primary text-xs hover:underline"
+						onClick={() => setOpen(false)}
+					>
+						Open page
+					</Link>
 				</div>
-			)}
+				<NoteList notes={notes} dismiss={dismiss} onNavigate={() => setOpen(false)} />
+			</TopbarPopover>
 		</div>
 	);
 }
@@ -168,7 +159,7 @@ export function PurchaseAlertList() {
 					Open page
 				</Link>
 			</div>
-			<div className="border-line rounded-md border">
+			<div className="border-line max-h-80 overflow-y-auto rounded-md border">
 				<NoteList notes={notes} dismiss={dismiss} emptyClassName="text-muted px-3 py-3 text-sm" />
 			</div>
 		</div>

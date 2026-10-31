@@ -1,7 +1,7 @@
 import { useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useMutation } from '@tanstack/react-query';
-import { LogOut, Search, Settings as SettingsIcon, Shield } from 'lucide-react';
+import { LogOut, Search, Settings as SettingsIcon, Shield, Trash2 } from 'lucide-react';
 
 import { patch } from '../lib/api';
 import { isMobileApp } from '../lib/desktop';
@@ -17,7 +17,20 @@ import { useUIStore } from '../stores/uiStore';
 import { MfaDisableSection, MfaSetupModal } from '../components/auth/MfaModals';
 import { PageHeader } from '../components/layout/PageHeader';
 import { PurchaseAlertList } from '../components/layout/PurchaseNotifications';
-import { Avatar, Button, Card, CardBody, CardHeader, Input } from '../components/ui';
+import { Avatar, Button, Card, CardBody, CardHeader, Input, Modal } from '../components/ui';
+
+function accountDisplayName(user) {
+	const name = (user?.full_name || '').trim();
+	return name || user?.email || '';
+}
+
+function deleteChallengePhrase(user) {
+	return `Delete ${accountDisplayName(user)}`;
+}
+
+function blockChallengeClipboard(event) {
+	event.preventDefault();
+}
 
 const PROVIDER_LABELS = {
 	openai: 'OpenAI',
@@ -45,7 +58,7 @@ function resolveSettingTab(raw, mobile) {
 
 function SettingsTabBar({ tabs, active, onChange }) {
 	return (
-		<div className="mb-4 overflow-x-auto">
+		<div className="overflow-x-auto">
 			<div
 				className="border-line bg-surface-2 inline-flex rounded-md border p-0.5"
 				role="tablist"
@@ -92,6 +105,7 @@ function SettingsPanel({ id, active, children }) {
 }
 
 export default function SettingsPage() {
+	const navigate = useNavigate();
 	const [searchParams, setSearchParams] = useSearchParams();
 	const user = useAuthStore((s) => s.user);
 	const logout = useAuthStore((s) => s.logout);
@@ -111,6 +125,8 @@ export default function SettingsPage() {
 		clearKeys
 	} = useLlmStore();
 	const [mfaSetupOpen, setMfaSetupOpen] = useState(false);
+	const [deleteOpen, setDeleteOpen] = useState(false);
+	const [deleteConfirm, setDeleteConfirm] = useState('');
 	const [newEmail, setNewEmail] = useState('');
 	const [openaiKeyDraft, setOpenaiKeyDraft] = useState(null);
 	const [openaiModelDraft, setOpenaiModelDraft] = useState(null);
@@ -137,7 +153,26 @@ export default function SettingsPage() {
 		}
 	});
 
+	const deleteAccount = useMutation({
+		mutationFn: () => useAuthStore.getState().deleteAccount(),
+		onSuccess: () => {
+			toast.success('Your account has been deleted.');
+			navigate('/login', { replace: true });
+		},
+		onError: (err) => {
+			toast.error(err.response?.data?.detail || 'Could not delete account.');
+		}
+	});
+
 	if (!user) return null;
+
+	const challengePhrase = deleteChallengePhrase(user);
+	const deleteReady = deleteConfirm === challengePhrase;
+
+	const closeDeleteModal = () => {
+		setDeleteOpen(false);
+		setDeleteConfirm('');
+	};
 
 	const tabs = visibleSettingTabs(mobile);
 	const activeTab = resolveSettingTab(searchParams.get('tab'), mobile);
@@ -154,15 +189,24 @@ export default function SettingsPage() {
 
 	return (
 		<div>
-			<PageHeader
-				title="Settings"
-				icon={SettingsIcon}
-				description="Manage your account and preferences."
-			/>
+			<div
+				className={
+					'bg-bg/95 sticky top-0 z-20 -mx-4 space-y-3 px-4 pb-3 ' +
+					'supports-[backdrop-filter]:bg-bg/80 backdrop-blur' +
+					'sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8' +
+					(mobile ? 'pt-[max(0px,env(safe-area-inset-top))]' : '')
+				}
+			>
+				<PageHeader
+					title="Settings"
+					icon={SettingsIcon}
+					description="Manage your account and preferences."
+					className="mb-0 pt-4 sm:pt-6 lg:pt-8"
+				/>
+				<SettingsTabBar tabs={tabs} active={activeTab} onChange={setActiveTab} />
+			</div>
 
-			<SettingsTabBar tabs={tabs} active={activeTab} onChange={setActiveTab} />
-
-			<div className="mx-auto max-w-7xl">
+			<div className="mx-auto max-w-7xl pt-4">
 				{mobile && (
 					<SettingsPanel id="shortcuts" active={activeTab}>
 						<Card>
@@ -238,9 +282,30 @@ export default function SettingsPage() {
 									))}
 								</div>
 							</div>
-							<Button variant="danger" onClick={logout} className="w-full">
-								<LogOut size={16} /> Sign out
-							</Button>
+							<div className="flex flex-col gap-2">
+								<Button variant="danger" onClick={logout} className="h-11 w-full sm:h-9">
+									<LogOut size={16} /> Sign out
+								</Button>
+								<div className="border-danger/30 bg-danger/5 space-y-3 rounded-md border p-3 sm:p-4">
+									<div>
+										<p className="text-fg text-sm font-semibold">Delete account</p>
+										<p className="text-muted mt-1 text-xs leading-relaxed sm:text-sm">
+											Permanently removes your account, owned ledgers, and personal data. Ledgers
+											owned by others stay; your access to them is removed. This cannot be undone.
+										</p>
+									</div>
+									<Button
+										variant="danger"
+										className="h-11 w-full sm:h-9"
+										onClick={() => {
+											setDeleteConfirm('');
+											setDeleteOpen(true);
+										}}
+									>
+										<Trash2 size={16} /> Delete account
+									</Button>
+								</div>
+							</div>
 						</CardBody>
 					</Card>
 				</SettingsPanel>
@@ -385,6 +450,57 @@ export default function SettingsPage() {
 				</SettingsPanel>
 			</div>
 			<MfaSetupModal open={mfaSetupOpen} onClose={() => setMfaSetupOpen(false)} />
+			<Modal
+				open={deleteOpen}
+				onClose={closeDeleteModal}
+				title="Delete account"
+				size="sm"
+				footer={
+					<>
+						<Button
+							variant="secondary"
+							onClick={closeDeleteModal}
+							disabled={deleteAccount.isPending}
+						>
+							Cancel
+						</Button>
+						<Button
+							variant="danger"
+							loading={deleteAccount.isPending}
+							disabled={!deleteReady}
+							onClick={() => deleteAccount.mutate()}
+						>
+							Delete permanently
+						</Button>
+					</>
+				}
+			>
+				<div className="space-y-4">
+					<p className="text-muted text-sm leading-relaxed">
+						This permanently deletes your account and all ledgers you own. Type the phrase below to
+						confirm.
+					</p>
+					<p
+						className="border-line bg-surface-2 text-fg rounded-md border px-3 py-2.5 text-center font-mono text-sm break-all select-none"
+						aria-label={`Type ${challengePhrase} to confirm`}
+						onCopy={blockChallengeClipboard}
+						onCut={blockChallengeClipboard}
+						onContextMenu={blockChallengeClipboard}
+						onDragStart={blockChallengeClipboard}
+					>
+						{challengePhrase}
+					</p>
+					<Input
+						label="Confirmation"
+						value={deleteConfirm}
+						onChange={(e) => setDeleteConfirm(e.target.value)}
+						placeholder="Type the phrase above"
+						autoComplete="off"
+						autoCorrect="off"
+						spellCheck={false}
+					/>
+				</div>
+			</Modal>
 		</div>
 	);
 }

@@ -2,11 +2,17 @@ import { useQuery } from '@tanstack/react-query';
 
 import { createNestedResourceHooks, createResourceHooks } from '../hooks/useResource';
 import { useActiveProfileId } from '../stores/profileStore';
-import { get } from './api';
+import { get, post } from './api';
 
 export const categoriesApi = createResourceHooks('finance-categories', '/finance/categories/');
 
 export const sourcesApi = createResourceHooks('finance-sources', '/finance/sources/');
+
+export function reassignAndDeleteSource(sourceId, targetSourceId) {
+	return post(`/finance/sources/${sourceId}/reassign-and-delete/`, {
+		target_source_id: targetSourceId
+	});
+}
 
 export const payeesApi = createResourceHooks('finance-payees', '/finance/payees/');
 
