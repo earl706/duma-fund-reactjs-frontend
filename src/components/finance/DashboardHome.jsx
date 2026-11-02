@@ -16,6 +16,7 @@ import { ArrowDownLeft, ArrowUpRight, LayoutDashboard, ScanLine } from 'lucide-r
 
 import { cn, formatActivityDate, formatCost } from '../../lib/format';
 import { Button, EmptyState, LoadingScreen } from '../ui';
+import { ProfileSwitcher } from './ProfileSwitcher';
 import { TypeGlyph, amountToneClass, formatSignedAmount } from './txnDisplay';
 
 const PERIODS = [
@@ -387,7 +388,7 @@ function AnalyticsPane({
 
 function PagerPane({ swiping, children }) {
 	return (
-		<section className="bg-bg min-h-0 snap-start snap-always overflow-hidden">
+		<section className="bg-bg box-border h-full min-h-0 w-full min-w-full shrink-0 snap-start snap-always overflow-hidden">
 			<div className={cn('home-pager-pane h-full min-h-0', swiping && 'is-swiping')}>
 				{children}
 			</div>
@@ -486,6 +487,32 @@ export function DashboardHome({
 
 	useEffect(() => () => clearTimeout(settleTimer.current), []);
 
+	// Re-snap after layout / resize so fractional widths do not leave a 1px peek
+	// of the next pane (visible as a vertical line on the first page).
+	useEffect(() => {
+		if (!pager) return undefined;
+		const el = pagerRef.current;
+		if (!el) return undefined;
+
+		const snap = () => {
+			const width = el.clientWidth;
+			if (!width) return;
+			const index = Math.min(1, Math.max(0, Math.round(el.scrollLeft / width)));
+			el.scrollLeft = index * width;
+			setPage(index);
+			setSwiping(false);
+		};
+
+		snap();
+		const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(snap) : null;
+		ro?.observe(el);
+		window.addEventListener('resize', snap);
+		return () => {
+			ro?.disconnect();
+			window.removeEventListener('resize', snap);
+		};
+	}, [pager]);
+
 	const dash = (
 		<DashboardPane
 			balance={balance}
@@ -521,11 +548,15 @@ export function DashboardHome({
 					</p>
 					<p className="text-muted truncate text-xs">{rangeLabel}</p>
 				</div>
-				{showScan && (
-					<Button variant="secondary" size="sm" className="h-8 shrink-0" onClick={onScan}>
-						<ScanLine size={16} /> Scan
-					</Button>
-				)}
+
+				<div className="flex shrink-0 items-center gap-2">
+					{pager && <ProfileSwitcher className="w-40 sm:w-48" compact />}
+					{showScan && (
+						<Button variant="secondary" size="sm" className="h-8 shrink-0" onClick={onScan}>
+							<ScanLine size={16} /> Scan
+						</Button>
+					)}
+				</div>
 			</header>
 
 			{pager && <PagerDots page={page} onPage={goTo} />}
@@ -535,7 +566,7 @@ export function DashboardHome({
 					ref={pagerRef}
 					onScroll={onPagerScroll}
 					style={{ WebkitOverflowScrolling: 'touch' }}
-					className="scrollbar-none grid min-h-0 w-full flex-1 snap-x snap-mandatory auto-cols-[100%] grid-flow-col grid-rows-1 overflow-x-auto overflow-y-hidden overscroll-x-contain"
+					className="home-pager-scroll flex min-h-0 w-full flex-1 snap-x snap-mandatory overflow-x-auto overflow-y-hidden overscroll-x-contain"
 				>
 					<PagerPane swiping={swiping}>{dash}</PagerPane>
 					<PagerPane swiping={swiping}>{stats}</PagerPane>

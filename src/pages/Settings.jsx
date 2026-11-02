@@ -4,7 +4,7 @@ import { useMutation } from '@tanstack/react-query';
 import { LogOut, Search, Settings as SettingsIcon, Shield, Trash2 } from 'lucide-react';
 
 import { patch } from '../lib/api';
-import { isMobileApp } from '../lib/desktop';
+import { useMobileLayout } from '../hooks/useMobileLayout';
 import { toast } from '../stores/toastStore';
 import { useAuthStore } from '../stores/authStore';
 import { ProfileSettingsCard } from '../components/finance/ProfileSettingsCard';
@@ -16,6 +16,7 @@ import { useThemeStore } from '../stores/themeStore';
 import { useUIStore } from '../stores/uiStore';
 import { MfaDisableSection, MfaSetupModal } from '../components/auth/MfaModals';
 import { PageHeader } from '../components/layout/PageHeader';
+import { StickyPageChrome } from '../components/layout/StickyPageChrome';
 import { PurchaseAlertList } from '../components/layout/PurchaseNotifications';
 import { Avatar, Button, Card, CardBody, CardHeader, Input, Modal } from '../components/ui';
 
@@ -56,11 +57,14 @@ function resolveSettingTab(raw, mobile) {
 	return mobile ? 'shortcuts' : 'account';
 }
 
-function SettingsTabBar({ tabs, active, onChange }) {
+function SettingsTabBar({ tabs, active, onChange, wrap = false }) {
 	return (
-		<div className="overflow-x-auto">
+		<div className={wrap ? undefined : 'overflow-x-auto'}>
 			<div
-				className="border-line bg-surface-2 inline-flex rounded-md border p-0.5"
+				className={
+					'border-line bg-surface-2 rounded-md border p-0.5 ' +
+					(wrap ? 'flex flex-wrap gap-0.5' : 'inline-flex')
+				}
 				role="tablist"
 				aria-label="Settings sections"
 			>
@@ -112,7 +116,7 @@ export default function SettingsPage() {
 	const updateUser = useAuthStore((s) => s.updateUser);
 	const { theme, setTheme } = useThemeStore();
 	const openPalette = useUIStore((s) => s.openPalette);
-	const mobile = isMobileApp();
+	const mobile = useMobileLayout();
 	const {
 		provider,
 		openaiApiKey,
@@ -189,22 +193,15 @@ export default function SettingsPage() {
 
 	return (
 		<div>
-			<div
-				className={
-					'bg-bg/95 sticky top-0 z-20 -mx-4 space-y-3 px-4 pb-3 ' +
-					'supports-[backdrop-filter]:bg-bg/80 backdrop-blur' +
-					'sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8' +
-					(mobile ? 'pt-[max(0px,env(safe-area-inset-top))]' : '')
-				}
-			>
+			<StickyPageChrome>
 				<PageHeader
 					title="Settings"
 					icon={SettingsIcon}
 					description="Manage your account and preferences."
-					className="mb-0 pt-4 sm:pt-6 lg:pt-8"
+					className="mb-0"
 				/>
-				<SettingsTabBar tabs={tabs} active={activeTab} onChange={setActiveTab} />
-			</div>
+				<SettingsTabBar tabs={tabs} active={activeTab} onChange={setActiveTab} wrap={mobile} />
+			</StickyPageChrome>
 
 			<div className="mx-auto max-w-7xl pt-4">
 				{mobile && (

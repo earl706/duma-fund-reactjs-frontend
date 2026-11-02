@@ -2,7 +2,7 @@ import { Suspense, useState } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 
 import { cn } from '../../lib/format';
-import { isMobileApp } from '../../lib/desktop';
+import { useMobileLayout } from '../../hooks/useMobileLayout';
 import { MfaPromptModal, MfaSetupModal } from '../auth/MfaModals';
 import { LoadingScreen } from '../ui';
 import { useAuthStore } from '../../stores/authStore';
@@ -12,9 +12,9 @@ import { ReceiptScanHost } from './ReceiptScanHost';
 import { Sidebar } from './Sidebar';
 import { Topbar } from './Topbar';
 
-/** Authenticated app shell: sidebar + topbar on web; bottom tabs on iOS. */
+/** Authenticated app shell: sidebar + topbar on wide web; bottom tabs on iOS / narrow. */
 export function AppLayout() {
-	const mobile = isMobileApp();
+	const mobile = useMobileLayout();
 	const location = useLocation();
 	const lockHome = location.pathname === '/';
 	const showMfaPrompt = useAuthStore((s) => s.user?.show_mfa_prompt);

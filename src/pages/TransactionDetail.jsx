@@ -7,7 +7,7 @@ import { sourceSelectOptions } from '../lib/balanceSources';
 import { categoriesApi, sourcesApi, transactionItemsApi, transactionsApi } from '../lib/resources';
 import { post } from '../lib/api';
 import { fetchAllPages } from '../lib/fetchAll';
-import { isMobileApp } from '../lib/desktop';
+import { useMobileLayout } from '../hooks/useMobileLayout';
 import { mediaUrl } from '../lib/receiptScan';
 import { STATUS_TONE } from '../lib/status';
 import { cn, formatCost, formatDate } from '../lib/format';
@@ -83,7 +83,7 @@ export default function TransactionDetailPage() {
 	const { id } = useParams();
 	const navigate = useNavigate();
 	const queryClient = useQueryClient();
-	const mobile = isMobileApp();
+	const mobile = useMobileLayout();
 	const canEdit = useCanEditLedger();
 	const profileId = useActiveProfileId();
 	const txnId = id ? Number(id) : null;

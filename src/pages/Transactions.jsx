@@ -7,7 +7,7 @@ import { cashSourceId, resolveSourceId, sourceSelectOptions } from '../lib/balan
 import { categoriesApi, sourcesApi, transactionsApi, useFinanceBalance } from '../lib/resources';
 import { del, post } from '../lib/api';
 import { fetchAllPages } from '../lib/fetchAll';
-import { isMobileApp } from '../lib/desktop';
+import { useMobileLayout } from '../hooks/useMobileLayout';
 import { downloadBlob } from '../lib/groceryReceipt';
 import { firstCommittedTransactionId, mediaUrl } from '../lib/receiptScan';
 import { STATUS_TONE } from '../lib/status';
@@ -31,6 +31,7 @@ import {
 	MAX_EXPENSE_CATEGORIES
 } from '../components/finance/CategoryMultiSelect';
 import { PageHeader } from '../components/layout/PageHeader';
+import { StickyPageChrome } from '../components/layout/StickyPageChrome';
 import {
 	Badge,
 	Button,
@@ -94,7 +95,7 @@ function categoryLabel(cat) {
 export default function TransactionsPage() {
 	const navigate = useNavigate();
 	const queryClient = useQueryClient();
-	const mobile = isMobileApp();
+	const mobile = useMobileLayout();
 	const { data: balance } = useFinanceBalance();
 	const canEdit = useCanEditLedger();
 	const profileId = useActiveProfileId();
@@ -844,57 +845,60 @@ export default function TransactionsPage() {
 
 	return (
 		<div>
-			<PageHeader
-				title="Transactions"
-				icon={ArrowLeftRight}
-				description={
-					balance
-						? `Balance ${formatCost(balance.balance)} · start ${formatCost(balance.starting_balance)}`
-						: 'Income, expenses, and transfers.'
-				}
-				actions={
-					<div className="flex flex-wrap gap-2">
-						<Button variant="secondary" onClick={() => setAccountsOpen(true)}>
-							<BookUser size={16} /> Accounts
-						</Button>
-						<Button variant="secondary" onClick={exportCsv} loading={csvBusy && !importDraft}>
-							<FileDown size={16} /> Export
-						</Button>
-						{canEdit ? (
-							<>
-								<Button
-									variant="secondary"
-									onClick={() => fileInputRef.current?.click()}
-									disabled={csvBusy}
-								>
-									<FileUp size={16} /> Import
-								</Button>
-								<input
-									ref={fileInputRef}
-									type="file"
-									accept=".csv,text/csv,text/plain"
-									className="hidden"
-									onChange={onPickCsv}
-								/>
-								{!mobile && (
-									<Button variant="secondary" onClick={() => setScanOpen(true)}>
-										<ScanLine size={16} /> Scan receipt
+			<StickyPageChrome>
+				<PageHeader
+					title="Transactions"
+					icon={ArrowLeftRight}
+					description={
+						balance
+							? `Balance ${formatCost(balance.balance)} · start ${formatCost(balance.starting_balance)}`
+							: 'Income, expenses, and transfers.'
+					}
+					className="mb-0"
+					actions={
+						<div className="flex flex-wrap gap-2">
+							<Button variant="secondary" onClick={() => setAccountsOpen(true)}>
+								<BookUser size={16} /> Accounts
+							</Button>
+							<Button variant="secondary" onClick={exportCsv} loading={csvBusy && !importDraft}>
+								<FileDown size={16} /> Export
+							</Button>
+							{canEdit ? (
+								<>
+									<Button
+										variant="secondary"
+										onClick={() => fileInputRef.current?.click()}
+										disabled={csvBusy}
+									>
+										<FileUp size={16} /> Import
 									</Button>
-								)}
-								<Button onClick={addExpense} loading={createTxn.isPending}>
-									<Plus size={16} /> New Transaction
-								</Button>
-							</>
-						) : null}
-					</div>
-				}
-			/>
+									<input
+										ref={fileInputRef}
+										type="file"
+										accept=".csv,text/csv,text/plain"
+										className="hidden"
+										onChange={onPickCsv}
+									/>
+									{!mobile && (
+										<Button variant="secondary" onClick={() => setScanOpen(true)}>
+											<ScanLine size={16} /> Scan receipt
+										</Button>
+									)}
+									<Button onClick={addExpense} loading={createTxn.isPending}>
+										<Plus size={16} /> New Transaction
+									</Button>
+								</>
+							) : null}
+						</div>
+					}
+				/>
 
-			<ListToolbar
-				search={search}
-				onSearchChange={setSearch}
-				searchPlaceholder="Search transactions…"
-			/>
+				<ListToolbar
+					search={search}
+					onSearchChange={setSearch}
+					searchPlaceholder="Search transactions…"
+				/>
+			</StickyPageChrome>
 
 			{isLoading ? (
 				<LoadingScreen />

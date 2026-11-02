@@ -8,6 +8,7 @@ import { paginateClient } from '../hooks/useListControls';
 import { toast } from '../stores/toastStore';
 import { useIsProfileOwner } from '../stores/profileStore';
 import { PageHeader } from '../components/layout/PageHeader';
+import { StickyPageChrome } from '../components/layout/StickyPageChrome';
 import { Button, Card, EmptyState, LoadingScreen, Pagination } from '../components/ui';
 
 const SECTION_PAGE_SIZE = 12;
@@ -50,7 +51,7 @@ function resolveInsightTab(raw) {
 
 function InsightTabBar({ tabs, active, onChange }) {
 	return (
-		<div className="mb-4 overflow-x-auto">
+		<div className="overflow-x-auto">
 			<div
 				className="border-line bg-surface-2 inline-flex rounded-md border p-0.5"
 				role="tablist"
@@ -201,16 +202,21 @@ export default function RegularBuysPage() {
 
 	return (
 		<div>
-			<PageHeader
-				title="Regular buys"
-				icon={RefreshCw}
-				description="Items you buy consistently — history, due soon, and lapsed staples."
-				actions={
-					<Button variant="secondary" onClick={() => refetch()} disabled={isFetching}>
-						Refresh
-					</Button>
-				}
-			/>
+			<StickyPageChrome>
+				<PageHeader
+					title="Regular buys"
+					icon={RefreshCw}
+					description="Items you buy consistently — history, due soon, and lapsed staples."
+					className="mb-0"
+					l
+					actions={
+						<Button variant="secondary" onClick={() => refetch()} disabled={isFetching}>
+							Refresh
+						</Button>
+					}
+				/>
+				<InsightTabBar tabs={INSIGHT_TABS} active={activeTab} onChange={setActiveTab} />
+			</StickyPageChrome>
 
 			{isLoading ? (
 				<LoadingScreen />
@@ -220,19 +226,16 @@ export default function RegularBuysPage() {
 					description="Try refreshing the page."
 				/>
 			) : (
-				<>
-					<InsightTabBar tabs={INSIGHT_TABS} active={activeTab} onChange={setActiveTab} />
-					{INSIGHT_TABS.map((tab) => (
-						<InsightPanel key={tab.id} id={tab.id} active={activeTab}>
-							<Section
-								description={tab.description}
-								rows={data?.[tab.rowsKey]}
-								empty={tab.empty}
-								onMarkRegular={isOwner ? onMarkRegular : undefined}
-							/>
-						</InsightPanel>
-					))}
-				</>
+				INSIGHT_TABS.map((tab) => (
+					<InsightPanel key={tab.id} id={tab.id} active={activeTab}>
+						<Section
+							description={tab.description}
+							rows={data?.[tab.rowsKey]}
+							empty={tab.empty}
+							onMarkRegular={isOwner ? onMarkRegular : undefined}
+						/>
+					</InsightPanel>
+				))
 			)}
 		</div>
 	);

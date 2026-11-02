@@ -3,6 +3,8 @@ import { Link, Navigate, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { useAuthStore } from '../stores/authStore';
 import { defaultRememberMe, isMobileApp } from '../lib/desktop';
+import { useMobileLayout } from '../hooks/useMobileLayout';
+import { cn } from '../lib/format';
 import { AppIcon, Button, Input, LoadingScreen } from '../components/ui';
 import PinInput from '../components/auth/PinInput';
 
@@ -21,8 +23,10 @@ function RememberMeCheckbox({ checked, onChange }) {
 }
 
 export function AuthShell({ children }) {
+	const mobile = useMobileLayout();
+
 	return (
-		<div className="bg-bg flex min-h-full">
+		<div className={cn('bg-bg flex', mobile ? 'h-full max-h-full overflow-hidden' : 'min-h-full')}>
 			<div className="bg-primary relative hidden w-1/2 overflow-hidden lg:block">
 				<div className="text-primary-fg relative flex h-full flex-col justify-between p-12">
 					<div className="flex items-center gap-2">
@@ -35,7 +39,12 @@ export function AuthShell({ children }) {
 					<p className="text-primary-fg/70 text-sm">Boilerplate</p>
 				</div>
 			</div>
-			<div className="flex w-full items-center justify-center p-6 lg:w-1/2">
+			<div
+				className={cn(
+					'flex w-full items-center justify-center p-6 lg:w-1/2',
+					mobile && 'min-h-0 flex-1 overflow-y-auto overscroll-y-contain'
+				)}
+			>
 				<motion.div
 					initial={{ opacity: 0, y: 12 }}
 					animate={{ opacity: 1, y: 0 }}

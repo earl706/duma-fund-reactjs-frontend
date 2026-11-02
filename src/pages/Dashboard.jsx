@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { format, parseISO } from 'date-fns';
 import { useQueryClient } from '@tanstack/react-query';
 
-import { isMobileApp } from '../lib/desktop';
+import { useMobileLayout } from '../hooks/useMobileLayout';
 import { useAuthStore } from '../stores/authStore';
 import { useCanEditLedger } from '../stores/profileStore';
 import {
@@ -61,7 +61,7 @@ function rowMatchesChip(row, chipId) {
 export default function DashboardPage() {
 	const queryClient = useQueryClient();
 	const user = useAuthStore((s) => s.user);
-	const mobile = isMobileApp();
+	const mobile = useMobileLayout();
 	const canEdit = useCanEditLedger();
 	const name = user?.full_name?.split(' ')[0] || 'there';
 	const [period, setPeriod] = useState('28');

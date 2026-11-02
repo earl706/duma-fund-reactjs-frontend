@@ -11,8 +11,9 @@ function isTabActive(tab, pathname) {
 }
 
 /**
- * GCash-style bottom tabs for the iOS shell. Scan is a raised center action,
- * not a route. Safe-area padding sits inside the bar.
+ * GCash-style bottom tabs for the mobile shell (iOS build or narrow browser).
+ * Scan is a raised center action, not a route. Safe-area padding sits inside
+ * the bar.
  */
 export function MobileTabBar() {
 	const location = useLocation();

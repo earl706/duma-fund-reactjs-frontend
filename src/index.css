@@ -123,6 +123,22 @@ html.mobile-app :is(input, textarea, select) {
   font-size: 16px;
 }
 
+/* Hide horizontal strip while snap-swiping Dashboard ↔ Analytics. */
+.home-pager-scroll {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+html:not(.mobile-app) .home-pager-scroll {
+  scrollbar-width: none;
+}
+
+.home-pager-scroll::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
 /* Interpolate blur(0) → blur so mid-swipe pages ease instead of popping. */
 .home-pager-pane {
   -webkit-filter: blur(0);

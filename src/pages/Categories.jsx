@@ -8,6 +8,7 @@ import { cn } from '../lib/format';
 import { toast } from '../stores/toastStore';
 import { useIsProfileOwner } from '../stores/profileStore';
 import { PageHeader } from '../components/layout/PageHeader';
+import { StickyPageChrome } from '../components/layout/StickyPageChrome';
 import {
 	Badge,
 	Button,
@@ -182,37 +183,42 @@ export default function CategoriesPage() {
 
 	return (
 		<div>
-			<PageHeader
-				title="Categories"
-				icon={FolderTree}
-				description="Nested expense and income labels for your ledger."
-				actions={
-					isOwner ? (
-						<Button onClick={openAdd}>
-							<Plus size={16} /> New Category
-						</Button>
-					) : null
-				}
-			/>
+			<StickyPageChrome>
+				<PageHeader
+					title="Categories"
+					icon={FolderTree}
+					description="Nested expense and income labels for your ledger."
+					className="mb-0"
+					actions={
+						isOwner ? (
+							<Button onClick={openAdd}>
+								<Plus size={16} /> New Category
+							</Button>
+						) : null
+					}
+				/>
 
-			<div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-				<div className="border-line bg-surface-2 inline-flex rounded-md border p-0.5">
-					{['expense', 'income'].map((k) => (
-						<Button
-							key={k}
-							size="sm"
-							variant={kind === k ? 'primary' : 'ghost'}
-							className="h-8 capitalize"
-							onClick={() => setKind(k)}
-						>
-							{k}
-						</Button>
-					))}
+				<div className="flex flex-wrap items-center justify-between gap-3">
+					<div className="border-line bg-surface-2 inline-flex rounded-md border p-0.5">
+						{['expense', 'income'].map((k) => (
+							<Button
+								key={k}
+								size="sm"
+								variant={kind === k ? 'primary' : 'ghost'}
+								className="h-8 capitalize"
+								onClick={() => setKind(k)}
+							>
+								{k}
+							</Button>
+						))}
+					</div>
+					{!isOwner && (
+						<p className="text-muted text-sm">
+							Only the profile owner can add or remove categories.
+						</p>
+					)}
 				</div>
-				{!isOwner && (
-					<p className="text-muted text-sm">Only the profile owner can add or remove categories.</p>
-				)}
-			</div>
+			</StickyPageChrome>
 
 			{isLoading ? (
 				<LoadingScreen />

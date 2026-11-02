@@ -17,6 +17,19 @@ export function isMobileApp() {
 	return envFlag(import.meta.env.VITE_MOBILE);
 }
 
+/** Tailwind `lg` boundary — mobile shell below this width (max-width: 1023px). */
+export const MOBILE_LAYOUT_MQ = '(max-width: 1023px)';
+
+/**
+ * Sync layout signal: iOS build always, otherwise viewport below `lg`.
+ * Prefer useMobileLayout() in React components so resize re-renders.
+ */
+export function isMobileLayout() {
+	if (isMobileApp()) return true;
+	if (typeof window === 'undefined') return false;
+	return window.matchMedia(MOBILE_LAYOUT_MQ).matches;
+}
+
 /** True when running inside the Tauri desktop shell (or VITE_DESKTOP=1). */
 export function isDesktopApp() {
 	if (isMobileApp()) return false;

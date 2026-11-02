@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { ArrowLeftRight, BookUser, Plus, Search, SlidersHorizontal, Trash2 } from 'lucide-react';
 
 import { cn, formatCost, formatDate } from '../../lib/format';
+import { StickyPageChrome } from '../layout/StickyPageChrome';
 import { Button, EmptyState, LoadingScreen, Modal } from '../ui';
 import { TypeGlyph, amountToneClass, formatSignedAmount } from './txnDisplay';
 
@@ -62,57 +63,59 @@ export function MobileTransactionsView({
 
 	return (
 		<div className="relative pb-24">
-			<header className="mb-5">
-				<p className="text-muted text-sm font-medium">Current balance</p>
-				<p className="text-fg mt-1 text-[2.15rem] leading-none font-semibold tracking-tight tabular-nums">
-					{balance ? formatCost(balance.balance) : '—'}
-				</p>
-				<p className="text-muted mt-2 text-sm">
-					Starting{' '}
-					<span className="text-fg tabular-nums">
-						{balance ? formatCost(balance.starting_balance) : '—'}
-					</span>
-				</p>
-			</header>
+			<StickyPageChrome>
+				<header>
+					<p className="text-muted text-sm font-medium">Current balance</p>
+					<p className="text-fg mt-1 text-[2.15rem] leading-none font-semibold tracking-tight tabular-nums">
+						{balance ? formatCost(balance.balance) : '—'}
+					</p>
+					<p className="text-muted mt-2 text-sm">
+						Starting{' '}
+						<span className="text-fg tabular-nums">
+							{balance ? formatCost(balance.starting_balance) : '—'}
+						</span>
+					</p>
+				</header>
 
-			<div className="mb-5 flex items-center gap-2">
-				<label className="border-line bg-surface-2 focus-within:border-primary relative flex min-h-11 flex-1 items-center gap-2 rounded-full border px-3.5">
-					<Search size={16} className="text-muted shrink-0" />
-					<input
-						type="search"
-						value={search}
-						onChange={(e) => setSearch(e.target.value)}
-						placeholder="Search title or store"
-						className="text-fg placeholder:text-muted h-11 w-full bg-transparent text-sm outline-none"
-						aria-label="Search transactions"
-					/>
-				</label>
-				{onAccounts && (
+				<div className="flex items-center gap-2">
+					<label className="border-line bg-surface-2 focus-within:border-primary relative flex min-h-11 flex-1 items-center gap-2 rounded-full border px-3.5">
+						<Search size={16} className="text-muted shrink-0" />
+						<input
+							type="search"
+							value={search}
+							onChange={(e) => setSearch(e.target.value)}
+							placeholder="Search title or store"
+							className="text-fg placeholder:text-muted h-11 w-full bg-transparent text-sm outline-none"
+							aria-label="Search transactions"
+						/>
+					</label>
+					{onAccounts && (
+						<Button
+							variant="secondary"
+							size="icon"
+							className="h-11 w-11 shrink-0 rounded-full"
+							onClick={onAccounts}
+							aria-label="Accounts information"
+						>
+							<BookUser size={18} />
+						</Button>
+					)}
 					<Button
 						variant="secondary"
 						size="icon"
-						className="h-11 w-11 shrink-0 rounded-full"
-						onClick={onAccounts}
-						aria-label="Accounts information"
+						className="relative h-11 w-11 shrink-0 rounded-full"
+						onClick={() => setFilterOpen(true)}
+						aria-label="Filter transactions"
 					>
-						<BookUser size={18} />
+						<SlidersHorizontal size={18} />
+						{extraFilters && (
+							<span className="bg-primary absolute top-1.5 right-1.5 h-2 w-2 rounded-full" />
+						)}
 					</Button>
-				)}
-				<Button
-					variant="secondary"
-					size="icon"
-					className="relative h-11 w-11 shrink-0 rounded-full"
-					onClick={() => setFilterOpen(true)}
-					aria-label="Filter transactions"
-				>
-					<SlidersHorizontal size={18} />
-					{extraFilters && (
-						<span className="bg-primary absolute top-1.5 right-1.5 h-2 w-2 rounded-full" />
-					)}
-				</Button>
-			</div>
+				</div>
+			</StickyPageChrome>
 
-			<div className="mb-2 flex items-baseline justify-between">
+			<div className="mt-5 mb-2 flex items-baseline justify-between">
 				<h2 className="text-muted text-[11px] font-semibold tracking-[0.14em] uppercase">
 					Last transactions
 				</h2>
