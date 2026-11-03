@@ -1,10 +1,18 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowLeftRight, BookUser, Plus, Search, SlidersHorizontal, Trash2 } from 'lucide-react';
+import {
+	ArrowLeftRight,
+	BookUser,
+	Plus,
+	Search,
+	Settings,
+	SlidersHorizontal,
+	Trash2
+} from 'lucide-react';
 
-import { cn, formatCost, formatDate } from '../../lib/format';
+import { cn, formatCost, formatDate, hasUpcomingBalance } from '../../lib/format';
 import { StickyPageChrome } from '../layout/StickyPageChrome';
-import { Button, EmptyState, LoadingScreen, Modal } from '../ui';
+import { Button, EmptyState, LoadingSwap, Modal } from '../ui';
 import { TypeGlyph, amountToneClass, formatSignedAmount } from './txnDisplay';
 
 const TYPE_FILTER = [
@@ -20,6 +28,13 @@ const STATUS_FILTER = [
 	{ value: '', label: 'All' },
 	{ value: 'archived', label: 'Archived' }
 ];
+
+const HORIZON_FILTER = [
+	{ value: '', label: 'All dates' },
+	{ value: 'upcoming', label: 'Upcoming' }
+];
+
+const LONG_PRESS_MS = 450;
 
 function FilterChip({ selected, onClick, children }) {
 	return (
@@ -39,7 +54,63 @@ function FilterChip({ selected, onClick, children }) {
 }
 
 /**
- * iOS ledger: balance hero + tappable rows. Editors get a per-row delete.
+ * Link that opens detail on tap; long-press calls onLongPress (editors).
+ */
+function TransactionRowLink({ row, className, children, onLongPress }) {
+	const timerRef = useRef(null);
+	const suppressClickRef = useRef(false);
+
+	const clearTimer = () => {
+		if (timerRef.current != null) {
+			window.clearTimeout(timerRef.current);
+			timerRef.current = null;
+		}
+	};
+
+	const startPress = (e) => {
+		if (!onLongPress) return;
+		if (e.pointerType === 'mouse' && e.button !== 0) return;
+		clearTimer();
+		suppressClickRef.current = false;
+		timerRef.current = window.setTimeout(() => {
+			timerRef.current = null;
+			suppressClickRef.current = true;
+			try {
+				navigator.vibrate?.(10);
+			} catch {
+				/* ignore */
+			}
+			onLongPress(row);
+		}, LONG_PRESS_MS);
+	};
+
+	const endPress = () => clearTimer();
+
+	return (
+		<Link
+			to={`/transactions/${row.id}`}
+			className={className}
+			onPointerDown={startPress}
+			onPointerUp={endPress}
+			onPointerCancel={endPress}
+			onPointerLeave={endPress}
+			onContextMenu={(e) => {
+				if (onLongPress) e.preventDefault();
+			}}
+			onClick={(e) => {
+				if (suppressClickRef.current) {
+					e.preventDefault();
+					suppressClickRef.current = false;
+				}
+			}}
+		>
+			{children}
+		</Link>
+	);
+}
+
+/**
+ * iOS ledger: balance hero + tappable rows. Editors get long-press edit + delete.
  */
 export function MobileTransactionsView({
 	balance,
@@ -54,27 +125,42 @@ export function MobileTransactionsView({
 	onAdd,
 	adding,
 	onRequestDelete,
+	onRequestEdit,
 	onAccounts
 }) {
 	const [filterOpen, setFilterOpen] = useState(false);
 	const typeValue = filters.type || '';
 	const statusValue = filters.status ?? '';
-	const extraFilters = Boolean(typeValue) || statusValue !== 'active';
+	const horizonValue = filters.horizon || '';
+	const extraFilters = Boolean(typeValue) || statusValue !== 'active' || Boolean(horizonValue);
 
 	return (
 		<div className="relative pb-24">
 			<StickyPageChrome>
-				<header>
-					<p className="text-muted text-sm font-medium">Current balance</p>
-					<p className="text-fg mt-1 text-[2.15rem] leading-none font-semibold tracking-tight tabular-nums">
-						{balance ? formatCost(balance.balance) : '—'}
-					</p>
-					<p className="text-muted mt-2 text-sm">
-						Starting{' '}
-						<span className="text-fg tabular-nums">
-							{balance ? formatCost(balance.starting_balance) : '—'}
-						</span>
-					</p>
+				<header className="flex items-start justify-between gap-3">
+					<div className="min-w-0">
+						<p className="text-muted text-sm font-medium">Current balance</p>
+						<p className="text-fg mt-1 text-[2.15rem] leading-none font-semibold tracking-tight tabular-nums">
+							{balance ? formatCost(balance.balance) : '—'}
+						</p>
+						{hasUpcomingBalance(balance) && (
+							<p className="text-muted mt-1.5 text-sm font-semibold tabular-nums">
+								Projected {formatCost(balance.projected_balance)}
+							</p>
+						)}
+					</div>
+					<Link
+						to="/settings"
+						aria-label="Settings"
+						className={cn(
+							'inline-flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-md',
+							'text-muted hover:bg-surface-2 hover:text-fg',
+							'focus-visible:outline-primary focus-visible:outline-2 focus-visible:outline-offset-2',
+							'transition-all duration-150'
+						)}
+					>
+						<Settings size={20} strokeWidth={2} />
+					</Link>
 				</header>
 
 				<div className="flex items-center gap-2">
@@ -122,74 +208,75 @@ export function MobileTransactionsView({
 				<p className="text-muted text-xs tabular-nums">{isLoading ? '…' : `${rows.length}`}</p>
 			</div>
 
-			{isLoading ? (
-				<LoadingScreen />
-			) : isError ? (
-				<EmptyState
-					icon={ArrowLeftRight}
-					title="Could not load transactions"
-					description="Something went wrong while fetching your ledger."
-				/>
-			) : rows.length === 0 ? (
-				<EmptyState
-					icon={ArrowLeftRight}
-					title="No transactions yet"
-					description="Scan a receipt or add an expense."
-					action={
-						<Button onClick={onAdd} loading={adding}>
-							<Plus size={16} /> New expense
-						</Button>
-					}
-				/>
-			) : (
-				<ul className="divide-line divide-y">
-					{rows.map((row) => (
-						<li key={row.id} className="flex items-center gap-0.5">
-							<Link
-								to={`/transactions/${row.id}`}
-								className={cn(
-									'flex min-h-17 min-w-0 flex-1 cursor-pointer items-center gap-3 py-3',
-									row.status === 'archived' && 'opacity-55'
-								)}
-							>
-								<TypeGlyph type={row.type} />
-								<div className="min-w-0 flex-1">
-									<p className="text-fg truncate text-[15px] font-medium">
-										{row.title || 'Untitled'}
-									</p>
-									<p className="text-muted mt-0.5 truncate text-xs">
-										{sourcesById?.get(row.source)?.name
-											? `${sourcesById.get(row.source).name} · `
-											: ''}
-										{row.merchant || 'Unknown'}
-										{row.date_effective ? ` · ${formatDate(row.date_effective)}` : ''}
-										{row.status === 'archived' ? ' · Archived' : ''}
-									</p>
-								</div>
-								<span
+			<LoadingSwap loading={isLoading} compact>
+				{isError ? (
+					<EmptyState
+						icon={ArrowLeftRight}
+						title="Could not load transactions"
+						description="Something went wrong while fetching your ledger."
+					/>
+				) : rows.length === 0 ? (
+					<EmptyState
+						icon={ArrowLeftRight}
+						title="No transactions yet"
+						description="Scan a receipt or add an expense."
+						action={
+							<Button onClick={onAdd} loading={adding}>
+								<Plus size={16} /> New expense
+							</Button>
+						}
+					/>
+				) : (
+					<ul className="divide-line divide-y">
+						{rows.map((row) => (
+							<li key={row.id} className="flex items-center gap-0.5">
+								<TransactionRowLink
+									row={row}
+									onLongPress={onRequestEdit}
 									className={cn(
-										'shrink-0 text-[15px] font-semibold tabular-nums',
-										amountToneClass(row.type)
+										'flex min-h-17 min-w-0 flex-1 cursor-pointer items-center gap-3 py-3 select-none',
+										row.status === 'archived' && 'opacity-55'
 									)}
 								>
-									{formatSignedAmount(row.amount, row.type)}
-								</span>
-							</Link>
-							{onRequestDelete && (
-								<Button
-									variant="ghost"
-									size="icon"
-									className="text-muted hover:text-danger h-11 w-11 shrink-0 rounded-full"
-									onClick={() => onRequestDelete(row)}
-									aria-label={`Delete ${row.title || 'transaction'}`}
-								>
-									<Trash2 size={18} />
-								</Button>
-							)}
-						</li>
-					))}
-				</ul>
-			)}
+									<TypeGlyph type={row.type} />
+									<div className="min-w-0 flex-1">
+										<p className="text-fg truncate text-[15px] font-medium">
+											{row.title || 'Untitled'}
+										</p>
+										<p className="text-muted mt-0.5 truncate text-xs">
+											{sourcesById?.get(row.source)?.name
+												? `${sourcesById.get(row.source).name} · `
+												: ''}
+											{row.merchant || 'Unknown'}
+											{row.date_effective ? ` · ${formatDate(row.date_effective)}` : ''}
+											{row.status === 'archived' ? ' · Archived' : ''}
+										</p>
+									</div>
+									<span
+										className={cn(
+											'shrink-0 text-[15px] font-semibold tabular-nums',
+											amountToneClass(row.type)
+										)}
+									>
+										{formatSignedAmount(row.amount, row.type)}
+									</span>
+								</TransactionRowLink>
+								{onRequestDelete && (
+									<Button
+										variant="ghost"
+										size="icon"
+										className="text-muted hover:text-danger h-11 w-11 shrink-0 rounded-full"
+										onClick={() => onRequestDelete(row)}
+										aria-label={`Delete ${row.title || 'transaction'}`}
+									>
+										<Trash2 size={18} />
+									</Button>
+								)}
+							</li>
+						))}
+					</ul>
+				)}
+			</LoadingSwap>
 
 			{onAdd && (
 				<button
@@ -205,6 +292,20 @@ export function MobileTransactionsView({
 
 			<Modal open={filterOpen} onClose={() => setFilterOpen(false)} title="Filters" size="sm">
 				<div className="space-y-5">
+					<div>
+						<p className="text-fg mb-2 text-sm font-medium">When</p>
+						<div className="flex flex-wrap gap-2">
+							{HORIZON_FILTER.map((opt) => (
+								<FilterChip
+									key={opt.value || 'all-horizon'}
+									selected={horizonValue === opt.value}
+									onClick={() => setFilter('horizon', opt.value)}
+								>
+									{opt.label}
+								</FilterChip>
+							))}
+						</div>
+					</div>
 					<div>
 						<p className="text-fg mb-2 text-sm font-medium">Type</p>
 						<div className="flex flex-wrap gap-2">

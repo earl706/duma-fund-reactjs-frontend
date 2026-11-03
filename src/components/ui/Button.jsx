@@ -1,4 +1,5 @@
 import { cn } from '../../lib/format';
+import { Spinner } from './feedback';
 
 const VARIANTS = {
 	primary: 'bg-primary text-primary-fg hover:opacity-90 shadow-sm shadow-primary/20',
@@ -42,9 +43,7 @@ export function Button({
 			aria-busy={loading || undefined}
 			{...props}
 		>
-			{loading && (
-				<span className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
-			)}
+			{loading && <Spinner size={16} className="opacity-90" alt="" />}
 			{children}
 		</button>
 	);

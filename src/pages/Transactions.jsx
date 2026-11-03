@@ -11,7 +11,14 @@ import { useMobileLayout } from '../hooks/useMobileLayout';
 import { downloadBlob } from '../lib/groceryReceipt';
 import { firstCommittedTransactionId, mediaUrl } from '../lib/receiptScan';
 import { STATUS_TONE } from '../lib/status';
-import { cn, formatCost, formatDate, formatDateShort, parseDateShort } from '../lib/format';
+import {
+	cn,
+	formatCost,
+	formatDate,
+	formatDateShort,
+	hasUpcomingBalance,
+	parseDateShort
+} from '../lib/format';
 import {
 	categoryPath,
 	defaultCategoryId,
@@ -26,6 +33,7 @@ import { useListControls } from '../hooks/useListControls';
 import { AccountsInformationModal } from '../components/finance/AccountsInformationModal';
 import { ReceiptImportModal } from '../components/finance/ReceiptImportModal';
 import { MobileTransactionsView } from '../components/finance/MobileTransactionsView';
+import { MobileTransactionEditModal } from '../components/finance/MobileTransactionEditModal';
 import {
 	formatCategoryTags,
 	MAX_EXPENSE_CATEGORIES
@@ -38,7 +46,7 @@ import {
 	DataSheet,
 	EmptyState,
 	ListToolbar,
-	LoadingScreen,
+	LoadingSwap,
 	Modal,
 	RecordInfoModal
 } from '../components/ui';
@@ -150,6 +158,10 @@ export default function TransactionsPage() {
 		const rest = { ...queryParams };
 		delete rest.page;
 		delete rest.page_size;
+		if (rest.horizon === 'upcoming') {
+			rest.date_effective__gt = todayISO();
+		}
+		delete rest.horizon;
 		return rest;
 	}, [queryParams]);
 
@@ -164,6 +176,7 @@ export default function TransactionsPage() {
 	});
 
 	const [deleteTarget, setDeleteTarget] = useState(null);
+	const [editTarget, setEditTarget] = useState(null);
 	const [bulkDeleteIds, setBulkDeleteIds] = useState(null);
 	const [infoTarget, setInfoTarget] = useState(null);
 	const [autoEdit, setAutoEdit] = useState(null);
@@ -835,9 +848,30 @@ export default function TransactionsPage() {
 					onAdd={canEdit ? addExpense : undefined}
 					adding={createTxn.isPending}
 					onRequestDelete={canEdit ? setDeleteTarget : undefined}
+					onRequestEdit={canEdit ? setEditTarget : undefined}
 					onAccounts={() => setAccountsOpen(true)}
 				/>
 				<AccountsInformationModal open={accountsOpen} onClose={() => setAccountsOpen(false)} />
+				<MobileTransactionEditModal
+					open={Boolean(editTarget)}
+					row={editTarget}
+					sourceOptions={sourceSelectOpts}
+					expenseOptions={expenseSelectOptions}
+					incomeOptions={incomeSelectOptions}
+					defaultExpenseCategoryId={defaultExpenseCategoryId}
+					defaultIncomeCategoryId={defaultIncomeCategoryId}
+					saving={updateTxn.isPending}
+					onClose={() => setEditTarget(null)}
+					onSave={(body) => {
+						updateTxn.mutate(body, {
+							onSuccess: () => {
+								toast.success('Transaction updated.');
+								setEditTarget(null);
+							},
+							onError: () => toast.error('Could not update transaction.')
+						});
+					}}
+				/>
 				{deleteDialog}
 			</>
 		);
@@ -851,10 +885,19 @@ export default function TransactionsPage() {
 					icon={ArrowLeftRight}
 					description={
 						balance
-							? `Balance ${formatCost(balance.balance)} · start ${formatCost(balance.starting_balance)}`
+							? [
+									`Balance ${formatCost(balance.balance)}`,
+									`start ${formatCost(balance.starting_balance)}`,
+									hasUpcomingBalance(balance)
+										? `Projected ${formatCost(balance.projected_balance)}`
+										: null
+								]
+									.filter(Boolean)
+									.join(' · ')
 							: 'Income, expenses, and transfers.'
 					}
 					className="mb-0"
+					settingsShortcut
 					actions={
 						<div className="flex flex-wrap gap-2">
 							<Button variant="secondary" onClick={() => setAccountsOpen(true)}>
@@ -897,41 +940,53 @@ export default function TransactionsPage() {
 					search={search}
 					onSearchChange={setSearch}
 					searchPlaceholder="Search transactions…"
+					filters={[
+						{
+							key: 'horizon',
+							label: 'When',
+							value: filters.horizon || '',
+							onChange: (v) => setFilter('horizon', v),
+							options: [
+								{ value: '', label: 'All dates' },
+								{ value: 'upcoming', label: 'Upcoming' }
+							]
+						}
+					]}
 				/>
 			</StickyPageChrome>
 
-			{isLoading ? (
-				<LoadingScreen />
-			) : isError ? (
-				<EmptyState
-					icon={ArrowLeftRight}
-					title="Could not load transactions"
-					description="Something went wrong while fetching your ledger."
-				/>
-			) : (
-				<DataSheet
-					rows={rows}
-					columns={columns}
-					ordering={ordering}
-					defaultOrdering={DEFAULT_ORDERING}
-					onOrderingChange={setOrdering}
-					onCommit={commitCell}
-					onAdd={canEdit ? addExpense : undefined}
-					onRequestDelete={canEdit ? setDeleteTarget : undefined}
-					onRequestDuplicate={canEdit ? duplicateTxn : undefined}
-					onRequestInfo={setInfoTarget}
-					onBulkDelete={canEdit ? setBulkDeleteIds : undefined}
-					onSelectionChange={onSelectionChange}
-					selectable={canEdit}
-					readOnly={!canEdit}
-					adding={createTxn.isPending || duplicating}
-					saving={updateTxn.isPending || duplicating}
-					pendingCells={pendingCells}
-					autoEdit={autoEdit}
-					addLabel="New transaction"
-					emptyMessage="No transactions yet. Scan a receipt or add an expense."
-				/>
-			)}
+			<LoadingSwap loading={isLoading}>
+				{isError ? (
+					<EmptyState
+						icon={ArrowLeftRight}
+						title="Could not load transactions"
+						description="Something went wrong while fetching your ledger."
+					/>
+				) : (
+					<DataSheet
+						rows={rows}
+						columns={columns}
+						ordering={ordering}
+						defaultOrdering={DEFAULT_ORDERING}
+						onOrderingChange={setOrdering}
+						onCommit={commitCell}
+						onAdd={canEdit ? addExpense : undefined}
+						onRequestDelete={canEdit ? setDeleteTarget : undefined}
+						onRequestDuplicate={canEdit ? duplicateTxn : undefined}
+						onRequestInfo={setInfoTarget}
+						onBulkDelete={canEdit ? setBulkDeleteIds : undefined}
+						onSelectionChange={onSelectionChange}
+						selectable={canEdit}
+						readOnly={!canEdit}
+						adding={createTxn.isPending || duplicating}
+						saving={updateTxn.isPending || duplicating}
+						pendingCells={pendingCells}
+						autoEdit={autoEdit}
+						addLabel="New transaction"
+						emptyMessage="No transactions yet. Scan a receipt or add an expense."
+					/>
+				)}
+			</LoadingSwap>
 
 			{deleteDialog}
 

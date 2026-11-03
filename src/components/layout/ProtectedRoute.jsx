@@ -3,7 +3,7 @@ import { Navigate, useLocation } from 'react-router-dom';
 
 import { useAuthStore } from '../../stores/authStore';
 import { useProfileStore } from '../../stores/profileStore';
-import { LoadingScreen } from '../ui';
+import { FadeIn, LoadingScreen } from '../ui';
 
 /** Gate authenticated routes; show a loader while the session rehydrates. */
 export function ProtectedRoute({ children }) {
@@ -31,5 +31,5 @@ export function ProtectedRoute({ children }) {
 	if (profileStatus === 'idle' || profileStatus === 'loading') {
 		return <LoadingScreen label="Loading profiles…" />;
 	}
-	return children;
+	return <FadeIn>{children}</FadeIn>;
 }

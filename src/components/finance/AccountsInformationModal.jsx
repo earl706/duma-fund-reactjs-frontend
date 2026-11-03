@@ -7,7 +7,7 @@ import { mediaUrl } from '../../lib/receiptScan';
 import { payeesApi } from '../../lib/resources';
 import { useCanEditLedger } from '../../stores/profileStore';
 import { toast } from '../../stores/toastStore';
-import { Button, EmptyState, Input, LoadingScreen, Modal, Select, Textarea } from '../ui';
+import { Button, EmptyState, Input, LoadingSwap, Modal, Select, Textarea } from '../ui';
 
 const CHANNELS = [
 	{ value: 'ewallet', label: 'E-wallet' },
@@ -265,144 +265,144 @@ export function AccountsInformationModal({ open, onClose }) {
 						</div>
 					)}
 
-					{isLoading ? (
-						<LoadingScreen />
-					) : payees.length === 0 && !form ? (
-						<EmptyState
-							icon={BookUser}
-							title="No payment contacts"
-							description={
-								canEdit
-									? 'Add a bank or e-wallet so you can copy details or show a QR when sending money.'
-									: 'No contacts have been added to this profile yet.'
-							}
-						/>
-					) : (
-						<ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-							{payees.map((row) => {
-								const src = qrSrc(row);
-								return (
-									<li key={row.id} className="border-line relative rounded-md border py-3">
-										{canEdit && (
-											<div className="absolute top-2 right-2 z-10 flex gap-0.5">
-												<Button
-													type="button"
-													variant="ghost"
-													size="icon"
-													className="text-muted hover:text-fg h-7 w-7"
-													onClick={() => startEdit(row)}
-													aria-label={`Edit ${row.display_name}`}
-													title="Edit"
-												>
-													<Pencil size={14} />
-												</Button>
-												<Button
-													type="button"
-													variant="ghost"
-													size="icon"
-													className="text-muted hover:text-danger h-7 w-7"
-													onClick={() => removePayee.mutate(row.id)}
-													disabled={removePayee.isPending}
-													aria-label={`Delete ${row.display_name}`}
-													title="Delete"
-												>
-													<Trash2 size={14} />
-												</Button>
-											</div>
-										)}
-										<div
-											className={`grid grid-cols-[auto_1fr] items-start gap-3 ${
-												canEdit ? 'pr-14' : ''
-											}`}
-										>
-											{src ? (
-												<button
-													type="button"
-													className="shrink-0 overflow-hidden"
-													onClick={() => setQrPreview(src)}
-													aria-label={`Show QR for ${row.display_name}`}
-												>
-													<img
-														src={src}
-														alt=""
-														className="h-36 w-36 object-contain sm:h-50 sm:w-50"
-													/>
-												</button>
-											) : (
-												<div className="border-line text-muted flex h-36 w-36 shrink-0 items-center justify-center rounded-md border sm:h-40 sm:w-40">
-													<QrCode size={28} />
+					<LoadingSwap loading={isLoading} compact>
+						{payees.length === 0 && !form ? (
+							<EmptyState
+								icon={BookUser}
+								title="No payment contacts"
+								description={
+									canEdit
+										? 'Add a bank or e-wallet so you can copy details or show a QR when sending money.'
+										: 'No contacts have been added to this profile yet.'
+								}
+							/>
+						) : (
+							<ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+								{payees.map((row) => {
+									const src = qrSrc(row);
+									return (
+										<li key={row.id} className="border-line relative rounded-md border py-3">
+											{canEdit && (
+												<div className="absolute top-2 right-2 z-10 flex gap-0.5">
+													<Button
+														type="button"
+														variant="ghost"
+														size="icon"
+														className="text-muted hover:text-fg h-7 w-7"
+														onClick={() => startEdit(row)}
+														aria-label={`Edit ${row.display_name}`}
+														title="Edit"
+													>
+														<Pencil size={14} />
+													</Button>
+													<Button
+														type="button"
+														variant="ghost"
+														size="icon"
+														className="text-muted hover:text-danger h-7 w-7"
+														onClick={() => removePayee.mutate(row.id)}
+														disabled={removePayee.isPending}
+														aria-label={`Delete ${row.display_name}`}
+														title="Delete"
+													>
+														<Trash2 size={14} />
+													</Button>
 												</div>
 											)}
-											<div className="min-w-0">
-												<div className="flex items-center gap-1.5">
-													<p className="text-fg min-w-0 truncate text-sm font-medium">
-														{row.display_name}
-													</p>
-													{src ? (
-														<Button
-															type="button"
-															variant="ghost"
-															size="icon"
-															className="text-muted hover:text-fg h-7 w-7 shrink-0"
-															onClick={() => setQrPreview(src)}
-															aria-label={`Open QR for ${row.display_name}`}
-															title="Open QR"
-														>
-															<QrCode size={14} />
-														</Button>
-													) : null}
-												</div>
-												<div className="mt-0.5 flex min-h-[1.25rem] items-center gap-1.5">
-													<p className="text-muted min-w-0 truncate text-xs">
-														{channelLabel(row.channel)}
-														{row.account_name ? ` · ${row.account_name}` : ''}
-													</p>
-													{row.account_name ? (
-														<Button
-															type="button"
-															variant="ghost"
-															size="icon"
-															className="text-muted hover:text-fg h-7 w-7 shrink-0"
-															onClick={() => copyText(row.account_name, 'Account name copied')}
-															aria-label={`Copy account name for ${row.display_name}`}
-															title="Copy account name"
-														>
-															<Copy size={14} />
-														</Button>
-													) : null}
-												</div>
-												<div className="mt-1 flex min-h-[1.5rem] items-center gap-1.5">
-													{row.account_number ? (
-														<>
-															<p className="text-fg min-w-0 truncate font-mono text-sm">
-																{row.account_number}
-															</p>
+											<div
+												className={`grid grid-cols-[auto_1fr] items-start gap-3 ${
+													canEdit ? 'pr-14' : ''
+												}`}
+											>
+												{src ? (
+													<button
+														type="button"
+														className="shrink-0 overflow-hidden"
+														onClick={() => setQrPreview(src)}
+														aria-label={`Show QR for ${row.display_name}`}
+													>
+														<img
+															src={src}
+															alt=""
+															className="h-36 w-36 object-contain sm:h-50 sm:w-50"
+														/>
+													</button>
+												) : (
+													<div className="border-line text-muted flex h-36 w-36 shrink-0 items-center justify-center rounded-md border sm:h-40 sm:w-40">
+														<QrCode size={28} />
+													</div>
+												)}
+												<div className="min-w-0">
+													<div className="flex items-center gap-1.5">
+														<p className="text-fg min-w-0 truncate text-sm font-medium">
+															{row.display_name}
+														</p>
+														{src ? (
 															<Button
 																type="button"
 																variant="ghost"
 																size="icon"
 																className="text-muted hover:text-fg h-7 w-7 shrink-0"
-																onClick={() =>
-																	copyText(row.account_number, 'Account number copied')
-																}
-																aria-label={`Copy account number for ${row.display_name}`}
-																title="Copy number"
+																onClick={() => setQrPreview(src)}
+																aria-label={`Open QR for ${row.display_name}`}
+																title="Open QR"
+															>
+																<QrCode size={14} />
+															</Button>
+														) : null}
+													</div>
+													<div className="mt-0.5 flex min-h-[1.25rem] items-center gap-1.5">
+														<p className="text-muted min-w-0 truncate text-xs">
+															{channelLabel(row.channel)}
+															{row.account_name ? ` · ${row.account_name}` : ''}
+														</p>
+														{row.account_name ? (
+															<Button
+																type="button"
+																variant="ghost"
+																size="icon"
+																className="text-muted hover:text-fg h-7 w-7 shrink-0"
+																onClick={() => copyText(row.account_name, 'Account name copied')}
+																aria-label={`Copy account name for ${row.display_name}`}
+																title="Copy account name"
 															>
 																<Copy size={14} />
 															</Button>
-														</>
-													) : (
-														<p className="text-muted text-xs">No account number</p>
-													)}
+														) : null}
+													</div>
+													<div className="mt-1 flex min-h-[1.5rem] items-center gap-1.5">
+														{row.account_number ? (
+															<>
+																<p className="text-fg min-w-0 truncate font-mono text-sm">
+																	{row.account_number}
+																</p>
+																<Button
+																	type="button"
+																	variant="ghost"
+																	size="icon"
+																	className="text-muted hover:text-fg h-7 w-7 shrink-0"
+																	onClick={() =>
+																		copyText(row.account_number, 'Account number copied')
+																	}
+																	aria-label={`Copy account number for ${row.display_name}`}
+																	title="Copy number"
+																>
+																	<Copy size={14} />
+																</Button>
+															</>
+														) : (
+															<p className="text-muted text-xs">No account number</p>
+														)}
+													</div>
+													{row.note ? <p className="text-muted mt-1 text-xs">{row.note}</p> : null}
 												</div>
-												{row.note ? <p className="text-muted mt-1 text-xs">{row.note}</p> : null}
 											</div>
-										</div>
-									</li>
-								);
-							})}
-						</ul>
-					)}
+										</li>
+									);
+								})}
+							</ul>
+						)}
+					</LoadingSwap>
 				</div>
 			</Modal>
 

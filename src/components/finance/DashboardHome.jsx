@@ -14,8 +14,9 @@ import {
 } from 'recharts';
 import { ArrowDownLeft, ArrowUpRight, LayoutDashboard, ScanLine } from 'lucide-react';
 
-import { cn, formatActivityDate, formatCost } from '../../lib/format';
-import { Button, EmptyState, LoadingScreen } from '../ui';
+import { cn, formatActivityDate, formatCost, hasUpcomingBalance } from '../../lib/format';
+import { PageHeader } from '../layout/PageHeader';
+import { Button, EmptyState, LoadingSwap } from '../ui';
 import { ProfileSwitcher } from './ProfileSwitcher';
 import { TypeGlyph, amountToneClass, formatSignedAmount } from './txnDisplay';
 
@@ -84,57 +85,54 @@ function netToneClass(value) {
 }
 
 function CashFlowChart({ points, loading }) {
-	if (loading) return <LoadingScreen />;
-	if (!points.length) {
-		return (
-			<p className="text-muted flex h-full min-h-0 items-center justify-center text-sm">
-				No cash flow in this range.
-			</p>
-		);
-	}
-
-	const tickInterval = points.length <= 8 ? 0 : Math.ceil(points.length / 7) - 1;
-
 	return (
-		<div className="h-full min-h-0 w-full">
-			<ResponsiveContainer width="100%" height="100%">
-				<BarChart
-					data={points}
-					margin={{ top: 8, right: 4, left: 0, bottom: 0 }}
-					barCategoryGap="12%"
-				>
-					<CartesianGrid stroke="var(--line)" strokeDasharray="3 6" vertical={false} />
-					<XAxis
-						dataKey="label"
-						tick={{ fill: 'var(--muted)', fontSize: 10 }}
-						axisLine={false}
-						tickLine={false}
-						interval={tickInterval}
-						minTickGap={8}
-					/>
-					<YAxis hide />
-					<Tooltip
-						cursor={{ fill: 'var(--surface-2)', fillOpacity: 0.6 }}
-						contentStyle={tooltipStyle()}
-						formatter={(value, name) => [formatCost(value), name]}
-					/>
-					<Bar
-						dataKey="moneyIn"
-						name="Money in"
-						stackId="flow"
-						fill="var(--success)"
-						maxBarSize={28}
-					/>
-					<Bar
-						dataKey="moneyOut"
-						name="Money out"
-						stackId="flow"
-						fill="var(--danger)"
-						maxBarSize={28}
-					/>
-				</BarChart>
-			</ResponsiveContainer>
-		</div>
+		<LoadingSwap loading={loading} compact label="">
+			{!points.length ? (
+				<p className="text-muted flex h-full min-h-0 items-center justify-center text-sm">
+					No cash flow in this range.
+				</p>
+			) : (
+				<div className="h-full min-h-0 w-full">
+					<ResponsiveContainer width="100%" height="100%">
+						<BarChart
+							data={points}
+							margin={{ top: 8, right: 4, left: 0, bottom: 0 }}
+							barCategoryGap="12%"
+						>
+							<CartesianGrid stroke="var(--line)" strokeDasharray="3 6" vertical={false} />
+							<XAxis
+								dataKey="label"
+								tick={{ fill: 'var(--muted)', fontSize: 10 }}
+								axisLine={false}
+								tickLine={false}
+								interval={points.length <= 8 ? 0 : Math.ceil(points.length / 7) - 1}
+								minTickGap={8}
+							/>
+							<YAxis hide />
+							<Tooltip
+								cursor={{ fill: 'var(--surface-2)', fillOpacity: 0.6 }}
+								contentStyle={tooltipStyle()}
+								formatter={(value, name) => [formatCost(value), name]}
+							/>
+							<Bar
+								dataKey="moneyIn"
+								name="Money in"
+								stackId="flow"
+								fill="var(--success)"
+								maxBarSize={28}
+							/>
+							<Bar
+								dataKey="moneyOut"
+								name="Money out"
+								stackId="flow"
+								fill="var(--danger)"
+								maxBarSize={28}
+							/>
+						</BarChart>
+					</ResponsiveContainer>
+				</div>
+			)}
+		</LoadingSwap>
 	);
 }
 
@@ -202,12 +200,18 @@ function DashboardPane({
 	balance,
 	moneyIn,
 	moneyOut,
+	period,
+	upcomingIn,
+	upcomingOut,
+	upcomingRangeLabel,
 	chips,
 	selectedChip,
 	onChip,
 	recent,
 	recentLoading
 }) {
+	const showProjected = hasUpcomingBalance(balance);
+
 	return (
 		<div className="flex h-full min-h-0 flex-col gap-3 overflow-hidden">
 			<section className="border-line bg-surface shrink-0 rounded-lg border px-4 py-4">
@@ -215,6 +219,16 @@ function DashboardPane({
 				<p className="text-fg mt-1 text-[2rem] leading-none font-semibold tracking-tight tabular-nums">
 					{balance ? formatCost(balance.balance) : '—'}
 				</p>
+				{showProjected && (
+					<p
+						className={cn(
+							'mt-1.5 text-sm font-semibold tabular-nums',
+							netToneClass(Number(balance.projected_balance) - Number(balance.balance || 0))
+						)}
+					>
+						Projected {formatCost(balance.projected_balance)}
+					</p>
+				)}
 				{balance?.sources?.length > 0 && (
 					<ul className="border-line mt-3 space-y-1.5 border-t pt-3">
 						{balance.sources.slice(0, 3).map((src) => (
@@ -230,6 +244,35 @@ function DashboardPane({
 						))}
 					</ul>
 				)}
+			</section>
+
+			<section className="border-line bg-surface shrink-0 rounded-lg border px-4 py-3">
+				<div className="flex items-baseline justify-between gap-3">
+					<p className="text-muted text-xs font-semibold tracking-wide uppercase">
+						Next {period} days
+					</p>
+					{upcomingRangeLabel ? (
+						<p className="text-muted truncate text-[11px]">{upcomingRangeLabel}</p>
+					) : null}
+				</div>
+				<div className="mt-2 grid grid-cols-2 gap-3">
+					<div>
+						<p className="text-success flex items-center gap-1 text-[11px] font-semibold tracking-wide uppercase">
+							<ArrowDownLeft size={12} /> In
+						</p>
+						<p className="text-success mt-0.5 text-base font-semibold tabular-nums">
+							+{formatCost(upcomingIn)}
+						</p>
+					</div>
+					<div>
+						<p className="text-danger flex items-center gap-1 text-[11px] font-semibold tracking-wide uppercase">
+							<ArrowUpRight size={12} /> Out
+						</p>
+						<p className="text-danger mt-0.5 text-base font-semibold tabular-nums">
+							−{formatCost(upcomingOut)}
+						</p>
+					</div>
+				</div>
 			</section>
 
 			<div className="grid shrink-0 grid-cols-2 gap-3">
@@ -292,45 +335,45 @@ function DashboardPane({
 						See all
 					</Link>
 				</div>
-				{recentLoading ? (
-					<LoadingScreen />
-				) : recent.length === 0 ? (
-					<p className="text-muted py-6 text-center text-sm">
-						{selectedChip == null
-							? 'No transactions yet.'
-							: 'No recent transactions in this category.'}
-					</p>
-				) : (
-					<ul className="divide-line min-h-0 flex-1 divide-y overflow-hidden">
-						{recent.map((row) => (
-							<li key={row.id}>
-								<Link
-									to={`/transactions/${row.id}`}
-									className="flex cursor-pointer items-center gap-3 py-2.5"
-								>
-									<TypeGlyph type={row.type} />
-									<div className="min-w-0 flex-1">
-										<p className="text-fg truncate text-[15px] leading-tight font-medium">
-											{row.title || 'Untitled'}
-										</p>
-										<p className="text-muted truncate text-xs leading-tight">
-											{row.merchant || 'Unknown'}
-											{row.date_effective ? ` · ${formatActivityDate(row.date_effective)}` : ''}
-										</p>
-									</div>
-									<span
-										className={cn(
-											'shrink-0 text-[15px] font-semibold tabular-nums',
-											amountToneClass(row.type)
-										)}
+				<LoadingSwap loading={recentLoading} compact label="">
+					{recent.length === 0 ? (
+						<p className="text-muted py-6 text-center text-sm">
+							{selectedChip == null
+								? 'No transactions yet.'
+								: 'No recent transactions in this category.'}
+						</p>
+					) : (
+						<ul className="divide-line min-h-0 flex-1 divide-y overflow-hidden">
+							{recent.map((row) => (
+								<li key={row.id}>
+									<Link
+										to={`/transactions/${row.id}`}
+										className="flex cursor-pointer items-center gap-3 py-2.5"
 									>
-										{formatSignedAmount(row.amount, row.type)}
-									</span>
-								</Link>
-							</li>
-						))}
-					</ul>
-				)}
+										<TypeGlyph type={row.type} />
+										<div className="min-w-0 flex-1">
+											<p className="text-fg truncate text-[15px] leading-tight font-medium">
+												{row.title || 'Untitled'}
+											</p>
+											<p className="text-muted truncate text-xs leading-tight">
+												{row.merchant || 'Unknown'}
+												{row.date_effective ? ` · ${formatActivityDate(row.date_effective)}` : ''}
+											</p>
+										</div>
+										<span
+											className={cn(
+												'shrink-0 text-[15px] font-semibold tabular-nums',
+												amountToneClass(row.type)
+											)}
+										>
+											{formatSignedAmount(row.amount, row.type)}
+										</span>
+									</Link>
+								</li>
+							))}
+						</ul>
+					)}
+				</LoadingSwap>
 			</section>
 		</div>
 	);
@@ -354,33 +397,33 @@ function AnalyticsPane({
 					title="Could not load analytics"
 					description="Something went wrong while fetching spend data."
 				/>
-			) : breakdownLoading ? (
-				<LoadingScreen />
 			) : (
-				<div className="grid min-h-0 flex-1 grid-rows-2 gap-3">
-					<div className="border-line bg-surface flex min-h-0 flex-col rounded-lg border p-4">
-						<div className="flex shrink-0 items-start justify-between gap-3">
-							<div>
-								<p className="text-muted text-xs font-medium tracking-wide uppercase">Net</p>
-								<p className={cn('text-xl font-semibold tabular-nums', netToneClass(net))}>
-									{formatNet(net)}
-								</p>
+				<LoadingSwap loading={breakdownLoading} compact>
+					<div className="grid min-h-0 flex-1 grid-rows-2 gap-3">
+						<div className="border-line bg-surface flex min-h-0 flex-col rounded-lg border p-4">
+							<div className="flex shrink-0 items-start justify-between gap-3">
+								<div>
+									<p className="text-muted text-xs font-medium tracking-wide uppercase">Net</p>
+									<p className={cn('text-xl font-semibold tabular-nums', netToneClass(net))}>
+										{formatNet(net)}
+									</p>
+								</div>
+								<div className="text-muted flex flex-col gap-3 pt-1 text-[11px] font-medium">
+									<PeriodToggle period={period} onPeriod={onPeriod} />
+								</div>
 							</div>
-							<div className="text-muted flex flex-col gap-3 pt-1 text-[11px] font-medium">
-								<PeriodToggle period={period} onPeriod={onPeriod} />
+							<div className="mt-1 min-h-0 flex-1">
+								<CashFlowChart points={chartPoints} loading={chartLoading} />
 							</div>
 						</div>
-						<div className="mt-1 min-h-0 flex-1">
-							<CashFlowChart points={chartPoints} loading={chartLoading} />
+						<div className="border-line bg-surface flex min-h-0 flex-col rounded-lg border p-4">
+							<p className="text-fg mb-2 text-sm font-semibold">Breakdown</p>
+							<div className="min-h-0 flex-1">
+								<CategoryPie rows={barRows} />
+							</div>
 						</div>
 					</div>
-					<div className="border-line bg-surface flex min-h-0 flex-col rounded-lg border p-4">
-						<p className="text-fg mb-2 text-sm font-semibold">Breakdown</p>
-						<div className="min-h-0 flex-1">
-							<CategoryPie rows={barRows} />
-						</div>
-					</div>
-				</div>
+				</LoadingSwap>
 			)}
 		</div>
 	);
@@ -430,6 +473,9 @@ export function DashboardHome({
 	rangeLabel,
 	moneyIn,
 	moneyOut,
+	upcomingIn = 0,
+	upcomingOut = 0,
+	upcomingRangeLabel,
 	net,
 	chips,
 	selectedChip,
@@ -518,6 +564,10 @@ export function DashboardHome({
 			balance={balance}
 			moneyIn={moneyIn}
 			moneyOut={moneyOut}
+			period={period}
+			upcomingIn={upcomingIn}
+			upcomingOut={upcomingOut}
+			upcomingRangeLabel={upcomingRangeLabel}
 			chips={chips}
 			selectedChip={selectedChip}
 			onChip={onChip}
@@ -541,23 +591,20 @@ export function DashboardHome({
 
 	return (
 		<div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-			<header className="mb-1 flex shrink-0 items-center justify-between gap-2">
-				<div className="min-w-0">
-					<p className="text-fg truncate text-xl leading-tight font-semibold tracking-tight">
-						{greeting}, {name}
-					</p>
-					<p className="text-muted truncate text-xs">{rangeLabel}</p>
-				</div>
-
-				<div className="flex shrink-0 items-center gap-2">
-					{pager && <ProfileSwitcher className="w-40 sm:w-48" compact />}
-					{showScan && (
+			<PageHeader
+				title={`${greeting}, ${name}`}
+				description={rangeLabel}
+				className="mb-1 shrink-0"
+				settingsShortcut
+				corner={pager ? <ProfileSwitcher className="w-40 sm:w-48" compact /> : null}
+				actions={
+					showScan ? (
 						<Button variant="secondary" size="sm" className="h-8 shrink-0" onClick={onScan}>
 							<ScanLine size={16} /> Scan
 						</Button>
-					)}
-				</div>
-			</header>
+					) : null
+				}
+			/>
 
 			{pager && <PagerDots page={page} onPage={goTo} />}
 

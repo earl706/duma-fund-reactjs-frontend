@@ -4,7 +4,7 @@ export { Badge } from './Badge';
 export { STATUS_TONE } from '../../lib/status';
 export { Input, Textarea, Select } from './Field';
 export { Modal } from './Modal';
-export { LoadingScreen, Skeleton, EmptyState } from './feedback';
+export { LoadingScreen, LoadingSwap, FadeIn, Spinner, Skeleton, EmptyState } from './feedback';
 export { ProgressBar, ProgressRing } from './Progress';
 export { Toasts } from './Toasts';
 export { StatCard } from './StatCard';

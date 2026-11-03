@@ -1,11 +1,4 @@
-import {
-	ArrowLeftRight,
-	FolderTree,
-	LayoutDashboard,
-	RefreshCw,
-	ScanLine,
-	User
-} from 'lucide-react';
+import { ArrowLeftRight, FolderTree, LayoutDashboard, RefreshCw, ScanLine } from 'lucide-react';
 
 /** Primary navigation, grouped for the sidebar. `end` marks exact-match links. */
 export const navGroups = [
@@ -26,5 +19,5 @@ export const mobileTabs = [
 	{ to: '/transactions', label: 'Transactions', icon: ArrowLeftRight },
 	{ kind: 'scan', label: 'Scan', icon: ScanLine },
 	{ to: '/categories', label: 'Categories', icon: FolderTree },
-	{ to: '/settings', label: 'Profile', icon: User }
+	{ to: '/regular-buys', label: 'Buys', icon: RefreshCw }
 ];

@@ -112,3 +112,9 @@ export function formatCost(value) {
 		maximumFractionDigits: 2
 	});
 }
+
+/** True when balance payload has future inflows or outflows. */
+export function hasUpcomingBalance(balance) {
+	if (!balance) return false;
+	return Number(balance.upcoming_in || 0) !== 0 || Number(balance.upcoming_out || 0) !== 0;
+}

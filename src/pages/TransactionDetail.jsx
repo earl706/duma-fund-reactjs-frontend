@@ -33,7 +33,9 @@ import {
 	DataSheet,
 	EmptyState,
 	ListToolbar,
+	FadeIn,
 	LoadingScreen,
+	LoadingSwap,
 	Modal,
 	RecordInfoModal,
 	Select
@@ -393,388 +395,390 @@ export default function TransactionDetailPage() {
 	}
 
 	return (
-		<div>
-			<Link
-				to="/transactions"
-				className="text-muted hover:text-fg mb-3 inline-flex items-center gap-1 text-sm"
-			>
-				<ArrowLeft size={14} /> Transactions
-			</Link>
+		<FadeIn>
+			<div>
+				<Link
+					to="/transactions"
+					className="text-muted hover:text-fg mb-3 inline-flex items-center gap-1 text-sm"
+				>
+					<ArrowLeft size={14} /> Transactions
+				</Link>
 
-			<PageHeader
-				title={txn.title || 'Untitled'}
-				icon={ArrowLeftRight}
-				description={`${txn.type} · ${formatCost(txn.amount)}${
-					txn.date_effective ? ` · ${formatDate(txn.date_effective)}` : ''
-				}${
-					sources.find((s) => s.id === txn.source)
-						? ` · ${sources.find((s) => s.id === txn.source).name}`
-						: ''
-				}`}
-				actions={
-					isExpense ? (
-						<div className="flex flex-wrap gap-2">
-							{canEdit && !mobile && (
-								<Button variant="secondary" onClick={() => setScanOpen(true)}>
-									<ScanLine size={16} /> Scan receipt
-								</Button>
-							)}
-							<Button
-								variant="secondary"
-								onClick={openExport}
-								loading={exporting}
-								disabled={!hasItems}
-							>
-								<ImageDown size={16} /> Export image
-							</Button>
-							{canEdit && (
-								<Button onClick={addItem} loading={createItem.isPending}>
-									<Plus size={16} /> Add item
-								</Button>
-							)}
-						</div>
-					) : null
-				}
-			/>
-
-			{sourceOptions.length > 0 && (
-				<div className="border-line bg-surface mb-4 max-w-xs rounded-md border px-3 py-2">
-					<Select
-						label="Source"
-						value={txn.source != null ? String(txn.source) : ''}
-						disabled={!canEdit || updateTxn.isPending}
-						onChange={(e) => {
-							const next = Number(e.target.value);
-							if (!next || next === txn.source) return;
-							updateTxn.mutate({ id: txn.id, source: next });
-						}}
-					>
-						{sourceOptions.map((s) => (
-							<option key={s.id} value={s.id}>
-								{s.name}
-								{s.status === 'archived' ? ' (archived)' : ''}
-							</option>
-						))}
-					</Select>
-				</div>
-			)}
-
-			{txn.receipt_image && (
-				<p className="mb-3">
-					<button
-						type="button"
-						onClick={() => setReceiptOpen(true)}
-						className="text-primary cursor-pointer text-sm hover:underline"
-					>
-						View receipt image
-					</button>
-				</p>
-			)}
-
-			{isExpense && (
-				<div className="border-line bg-surface mb-4 rounded-md border px-3 py-2">
-					<div
-						className={cn(
-							'flex flex-col gap-2',
-							editingCategories
-								? 'sm:grid sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:items-start sm:gap-3'
-								: 'sm:grid sm:grid-cols-[auto_minmax(0,1fr)] sm:items-start sm:gap-3'
-						)}
-					>
-						<div className="sm:pt-0.5">
-							<span className="text-fg text-sm font-medium">Categories</span>
-							<p className="text-muted text-[10px] leading-tight">
-								{displayCategoryIds.length}/{MAX_EXPENSE_CATEGORIES} · star = primary
-							</p>
-						</div>
-						<div
-							className={cn(
-								'grid grid-cols-2 gap-1 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6',
-								(!canEdit || updateTxn.isPending) && 'pointer-events-none opacity-60'
-							)}
-							role="group"
-							aria-label="Expense categories"
-						>
-							{categoryOptions.length === 0 ? (
-								<p className="text-muted col-span-full px-0.5 py-1 text-xs">
-									No expense categories.
-								</p>
-							) : (
-								categoryOptions.map((opt) => {
-									const id = Number(opt.value);
-									const checked = displayCategoryIds.map(Number).includes(id);
-									const isPrimary = checked && Number(displayPrimary) === id;
-									const atCap = !checked && displayCategoryIds.length >= MAX_EXPENSE_CATEGORIES;
-									return (
-										<label
-											key={opt.value}
-											className={cn(
-												'flex cursor-pointer items-center gap-1.5 rounded-sm border px-1.5 py-1 text-xs',
-												checked
-													? 'border-primary bg-primary/12 text-primary'
-													: 'border-line text-muted',
-												atCap && 'opacity-40'
-											)}
-										>
-											<input
-												type="checkbox"
-												className="accent-primary"
-												checked={checked}
-												disabled={!canEdit || updateTxn.isPending || atCap}
-												onChange={() => toggleHeaderCategory(id)}
-											/>
-											<span className="text-fg min-w-0 flex-1 truncate">{opt.label}</span>
-											{checked && (
-												<button
-													type="button"
-													className={cn(
-														'text-muted hover:text-primary -mr-0.5 shrink-0 rounded p-0.5',
-														isPrimary && 'text-primary'
-													)}
-													title={isPrimary ? 'Primary category' : 'Set as primary'}
-													aria-label={isPrimary ? 'Primary category' : 'Set as primary'}
-													onClick={(e) => {
-														e.preventDefault();
-														setHeaderPrimary(id);
-													}}
-												>
-													<Star size={12} fill={isPrimary ? 'currentColor' : 'none'} />
-												</button>
-											)}
-										</label>
-									);
-								})
-							)}
-						</div>
-					</div>
-					{editingCategories && (
-						<div className="flex justify-end gap-2">
-							<Button
-								variant="secondary"
-								size="sm"
-								onClick={() => {
-									setCategoryDraftIds(null);
-									setCategoryDraftPrimary(null);
-								}}
-							>
-								Cancel
-							</Button>
-							<Button size="sm" loading={updateTxn.isPending} onClick={saveHeaderCategories}>
-								Save
-							</Button>
-						</div>
-					)}
-				</div>
-			)}
-
-			{!isExpense ? (
-				<EmptyState
+				<PageHeader
+					title={txn.title || 'Untitled'}
 					icon={ArrowLeftRight}
-					title="Header-only transaction"
-					description="Income and transfers do not have line items. Edit the amount on the transactions list."
+					description={`${txn.type} · ${formatCost(txn.amount)}${
+						txn.date_effective ? ` · ${formatDate(txn.date_effective)}` : ''
+					}${
+						sources.find((s) => s.id === txn.source)
+							? ` · ${sources.find((s) => s.id === txn.source).name}`
+							: ''
+					}`}
+					actions={
+						isExpense ? (
+							<div className="flex flex-wrap gap-2">
+								{canEdit && !mobile && (
+									<Button variant="secondary" onClick={() => setScanOpen(true)}>
+										<ScanLine size={16} /> Scan receipt
+									</Button>
+								)}
+								<Button
+									variant="secondary"
+									onClick={openExport}
+									loading={exporting}
+									disabled={!hasItems}
+								>
+									<ImageDown size={16} /> Export image
+								</Button>
+								{canEdit && (
+									<Button onClick={addItem} loading={createItem.isPending}>
+										<Plus size={16} /> Add item
+									</Button>
+								)}
+							</div>
+						) : null
+					}
 				/>
-			) : (
-				<>
-					<ListToolbar
-						search={search}
-						onSearchChange={setSearch}
-						searchPlaceholder="Search items…"
-						filters={[
-							{
-								key: 'status',
-								label: 'Status',
-								value: filters.status || '',
-								onChange: (v) => setFilter('status', v),
-								options: STATUS_OPTIONS
-							}
-						]}
-					/>
 
-					{isLoading ? (
-						<LoadingScreen />
-					) : isError ? (
-						<EmptyState icon={ArrowLeftRight} title="Could not load items" />
-					) : (
-						<DataSheet
-							rows={items}
-							columns={columns}
-							ordering={ordering}
-							defaultOrdering={DEFAULT_ORDERING}
-							onOrderingChange={setOrdering}
-							onCommit={commitCell}
-							onAdd={canEdit ? addItem : undefined}
-							onRequestDelete={canEdit ? setDeleteTarget : undefined}
-							onRequestDuplicate={canEdit ? duplicateItem : undefined}
-							onRequestInfo={setInfoTarget}
-							onBulkDelete={canEdit ? setBulkDeleteIds : undefined}
-							selectable={canEdit}
-							readOnly={!canEdit}
-							adding={createItem.isPending || duplicating}
-							saving={updateItem.isPending || updateTxn.isPending || duplicating}
-							autoEdit={autoEdit}
-							addLabel="Add item"
-							emptyMessage="No line items. Add rows or scan a receipt."
-						/>
-					)}
-				</>
-			)}
-
-			<Modal
-				open={Boolean(deleteTarget)}
-				onClose={() => !removeItem.isPending && setDeleteTarget(null)}
-				title="Delete item"
-				size="sm"
-				footer={
-					<>
-						<Button variant="secondary" onClick={() => setDeleteTarget(null)}>
-							Cancel
-						</Button>
-						<Button
-							variant="danger"
-							loading={removeItem.isPending}
-							onClick={() => removeItem.mutate(deleteTarget.id)}
-						>
-							Delete
-						</Button>
-					</>
-				}
-			>
-				<p className="text-muted text-sm">
-					Delete <span className="text-fg font-medium">{deleteTarget?.title}</span>?
-				</p>
-			</Modal>
-
-			<Modal
-				open={Boolean(bulkDeleteIds?.length)}
-				onClose={() => !bulkDeleting && setBulkDeleteIds(null)}
-				title="Delete selected items"
-				size="sm"
-				footer={
-					<>
-						<Button variant="secondary" onClick={() => setBulkDeleteIds(null)}>
-							Cancel
-						</Button>
-						<Button
-							variant="danger"
-							loading={bulkDeleting}
-							onClick={async () => {
-								setBulkDeleting(true);
-								try {
-									await Promise.all(bulkDeleteIds.map((i) => removeItem.mutateAsync(i)));
-									toast.success('Deleted.');
-									setBulkDeleteIds(null);
-								} catch {
-									toast.error('Could not delete some items.');
-								} finally {
-									setBulkDeleting(false);
-								}
+				{sourceOptions.length > 0 && (
+					<div className="border-line bg-surface mb-4 max-w-xs rounded-md border px-3 py-2">
+						<Select
+							label="Source"
+							value={txn.source != null ? String(txn.source) : ''}
+							disabled={!canEdit || updateTxn.isPending}
+							onChange={(e) => {
+								const next = Number(e.target.value);
+								if (!next || next === txn.source) return;
+								updateTxn.mutate({ id: txn.id, source: next });
 							}}
 						>
-							Delete {bulkDeleteIds?.length || 0}
-						</Button>
-					</>
-				}
-			>
-				<p className="text-muted text-sm">Delete selected line items?</p>
-			</Modal>
+							{sourceOptions.map((s) => (
+								<option key={s.id} value={s.id}>
+									{s.name}
+									{s.status === 'archived' ? ' (archived)' : ''}
+								</option>
+							))}
+						</Select>
+					</div>
+				)}
 
-			<RecordInfoModal
-				open={Boolean(infoTarget)}
-				onClose={() => setInfoTarget(null)}
-				title="Line item"
-				fields={
-					infoTarget
-						? [
-								{ label: 'Title', value: infoTarget.title },
-								{ label: 'Price', value: formatCost(infoTarget.cost) },
-								{
-									label: 'Quantity',
-									value: `${formatQty(infoTarget.quantity)} ${infoTarget.unit || 'pcs'}`
-								},
-								{ label: 'Line total', value: formatCost(lineTotal(infoTarget)) },
-								{
-									label: 'Status',
-									value: (
-										<Badge
-											tone={STATUS_TONE[infoTarget.status] || 'neutral'}
-											className="capitalize"
-										>
-											{infoTarget.status}
-										</Badge>
-									)
-								}
-							]
-						: []
-				}
-			/>
+				{txn.receipt_image && (
+					<p className="mb-3">
+						<button
+							type="button"
+							onClick={() => setReceiptOpen(true)}
+							className="text-primary cursor-pointer text-sm hover:underline"
+						>
+							View receipt image
+						</button>
+					</p>
+				)}
 
-			<Modal
-				open={receiptOpen}
-				onClose={() => setReceiptOpen(false)}
-				title="Receipt"
-				size="lg"
-				footer={
-					<Button variant="secondary" onClick={() => setReceiptOpen(false)}>
-						Close
-					</Button>
-				}
-			>
-				<div className="bg-surface-2 flex justify-center rounded-md p-3">
-					<img
-						src={mediaUrl(txn.receipt_image)}
-						alt={`Receipt for ${txn.title || 'transaction'}`}
-						className="max-h-[70vh] w-auto max-w-full rounded-sm object-contain"
+				{isExpense && (
+					<div className="border-line bg-surface mb-4 rounded-md border px-3 py-2">
+						<div
+							className={cn(
+								'flex flex-col gap-2',
+								editingCategories
+									? 'sm:grid sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:items-start sm:gap-3'
+									: 'sm:grid sm:grid-cols-[auto_minmax(0,1fr)] sm:items-start sm:gap-3'
+							)}
+						>
+							<div className="sm:pt-0.5">
+								<span className="text-fg text-sm font-medium">Categories</span>
+								<p className="text-muted text-[10px] leading-tight">
+									{displayCategoryIds.length}/{MAX_EXPENSE_CATEGORIES} · star = primary
+								</p>
+							</div>
+							<div
+								className={cn(
+									'grid grid-cols-2 gap-1 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6',
+									(!canEdit || updateTxn.isPending) && 'pointer-events-none opacity-60'
+								)}
+								role="group"
+								aria-label="Expense categories"
+							>
+								{categoryOptions.length === 0 ? (
+									<p className="text-muted col-span-full px-0.5 py-1 text-xs">
+										No expense categories.
+									</p>
+								) : (
+									categoryOptions.map((opt) => {
+										const id = Number(opt.value);
+										const checked = displayCategoryIds.map(Number).includes(id);
+										const isPrimary = checked && Number(displayPrimary) === id;
+										const atCap = !checked && displayCategoryIds.length >= MAX_EXPENSE_CATEGORIES;
+										return (
+											<label
+												key={opt.value}
+												className={cn(
+													'flex cursor-pointer items-center gap-1.5 rounded-sm border px-1.5 py-1 text-xs',
+													checked
+														? 'border-primary bg-primary/12 text-primary'
+														: 'border-line text-muted',
+													atCap && 'opacity-40'
+												)}
+											>
+												<input
+													type="checkbox"
+													className="accent-primary"
+													checked={checked}
+													disabled={!canEdit || updateTxn.isPending || atCap}
+													onChange={() => toggleHeaderCategory(id)}
+												/>
+												<span className="text-fg min-w-0 flex-1 truncate">{opt.label}</span>
+												{checked && (
+													<button
+														type="button"
+														className={cn(
+															'text-muted hover:text-primary -mr-0.5 shrink-0 rounded p-0.5',
+															isPrimary && 'text-primary'
+														)}
+														title={isPrimary ? 'Primary category' : 'Set as primary'}
+														aria-label={isPrimary ? 'Primary category' : 'Set as primary'}
+														onClick={(e) => {
+															e.preventDefault();
+															setHeaderPrimary(id);
+														}}
+													>
+														<Star size={12} fill={isPrimary ? 'currentColor' : 'none'} />
+													</button>
+												)}
+											</label>
+										);
+									})
+								)}
+							</div>
+						</div>
+						{editingCategories && (
+							<div className="flex justify-end gap-2">
+								<Button
+									variant="secondary"
+									size="sm"
+									onClick={() => {
+										setCategoryDraftIds(null);
+										setCategoryDraftPrimary(null);
+									}}
+								>
+									Cancel
+								</Button>
+								<Button size="sm" loading={updateTxn.isPending} onClick={saveHeaderCategories}>
+									Save
+								</Button>
+							</div>
+						)}
+					</div>
+				)}
+
+				{!isExpense ? (
+					<EmptyState
+						icon={ArrowLeftRight}
+						title="Header-only transaction"
+						description="Income and transfers do not have line items. On mobile, long-press the row in Transactions to edit header fields; on desktop, edit them in the list."
 					/>
-				</div>
-			</Modal>
+				) : (
+					<>
+						<ListToolbar
+							search={search}
+							onSearchChange={setSearch}
+							searchPlaceholder="Search items…"
+							filters={[
+								{
+									key: 'status',
+									label: 'Status',
+									value: filters.status || '',
+									onChange: (v) => setFilter('status', v),
+									options: STATUS_OPTIONS
+								}
+							]}
+						/>
 
-			<GroceryExportModal
-				open={exportOpen}
-				onClose={() => {
-					setExportOpen(false);
-					setExportBlob(null);
-					setPreviewUrl((prev) => {
-						if (prev) URL.revokeObjectURL(prev);
-						return '';
-					});
-				}}
-				previewUrl={previewUrl}
-				onDownload={() => {
-					if (exportBlob && exportName) {
-						downloadBlob(exportBlob, exportName);
-						toast.success('Image downloaded.');
-					}
-				}}
-				canShare={canShare}
-				sharing={sharing}
-				onShare={async () => {
-					if (!exportBlob || !exportName) return;
-					setSharing(true);
-					try {
-						const file = new File([exportBlob], exportName, { type: 'image/png' });
-						await shareImageFile(file, txn?.title);
-					} catch (err) {
-						if (err?.name !== 'AbortError') toast.error('Could not share image.');
-					} finally {
-						setSharing(false);
-					}
-				}}
-			/>
+						<LoadingSwap loading={isLoading}>
+							{isError ? (
+								<EmptyState icon={ArrowLeftRight} title="Could not load items" />
+							) : (
+								<DataSheet
+									rows={items}
+									columns={columns}
+									ordering={ordering}
+									defaultOrdering={DEFAULT_ORDERING}
+									onOrderingChange={setOrdering}
+									onCommit={commitCell}
+									onAdd={canEdit ? addItem : undefined}
+									onRequestDelete={canEdit ? setDeleteTarget : undefined}
+									onRequestDuplicate={canEdit ? duplicateItem : undefined}
+									onRequestInfo={setInfoTarget}
+									onBulkDelete={canEdit ? setBulkDeleteIds : undefined}
+									selectable={canEdit}
+									readOnly={!canEdit}
+									adding={createItem.isPending || duplicating}
+									saving={updateItem.isPending || updateTxn.isPending || duplicating}
+									autoEdit={autoEdit}
+									addLabel="Add item"
+									emptyMessage="No line items. Add rows or scan a receipt."
+								/>
+							)}
+						</LoadingSwap>
+					</>
+				)}
 
-			{!mobile && (
-				<ReceiptImportModal
-					open={scanOpen}
-					onClose={() => setScanOpen(false)}
-					categories={expenseCategories}
-					incomeCategories={incomeCategories}
-					defaultCategoryId={defaultCategoryId}
-					onCommitted={() => {
-						queryClient.invalidateQueries({ queryKey: ['finance-transactions'] });
-						queryClient.invalidateQueries({ queryKey: ['finance-transaction-items'] });
-						queryClient.invalidateQueries({ queryKey: ['finance-balance'] });
+				<Modal
+					open={Boolean(deleteTarget)}
+					onClose={() => !removeItem.isPending && setDeleteTarget(null)}
+					title="Delete item"
+					size="sm"
+					footer={
+						<>
+							<Button variant="secondary" onClick={() => setDeleteTarget(null)}>
+								Cancel
+							</Button>
+							<Button
+								variant="danger"
+								loading={removeItem.isPending}
+								onClick={() => removeItem.mutate(deleteTarget.id)}
+							>
+								Delete
+							</Button>
+						</>
+					}
+				>
+					<p className="text-muted text-sm">
+						Delete <span className="text-fg font-medium">{deleteTarget?.title}</span>?
+					</p>
+				</Modal>
+
+				<Modal
+					open={Boolean(bulkDeleteIds?.length)}
+					onClose={() => !bulkDeleting && setBulkDeleteIds(null)}
+					title="Delete selected items"
+					size="sm"
+					footer={
+						<>
+							<Button variant="secondary" onClick={() => setBulkDeleteIds(null)}>
+								Cancel
+							</Button>
+							<Button
+								variant="danger"
+								loading={bulkDeleting}
+								onClick={async () => {
+									setBulkDeleting(true);
+									try {
+										await Promise.all(bulkDeleteIds.map((i) => removeItem.mutateAsync(i)));
+										toast.success('Deleted.');
+										setBulkDeleteIds(null);
+									} catch {
+										toast.error('Could not delete some items.');
+									} finally {
+										setBulkDeleting(false);
+									}
+								}}
+							>
+								Delete {bulkDeleteIds?.length || 0}
+							</Button>
+						</>
+					}
+				>
+					<p className="text-muted text-sm">Delete selected line items?</p>
+				</Modal>
+
+				<RecordInfoModal
+					open={Boolean(infoTarget)}
+					onClose={() => setInfoTarget(null)}
+					title="Line item"
+					fields={
+						infoTarget
+							? [
+									{ label: 'Title', value: infoTarget.title },
+									{ label: 'Price', value: formatCost(infoTarget.cost) },
+									{
+										label: 'Quantity',
+										value: `${formatQty(infoTarget.quantity)} ${infoTarget.unit || 'pcs'}`
+									},
+									{ label: 'Line total', value: formatCost(lineTotal(infoTarget)) },
+									{
+										label: 'Status',
+										value: (
+											<Badge
+												tone={STATUS_TONE[infoTarget.status] || 'neutral'}
+												className="capitalize"
+											>
+												{infoTarget.status}
+											</Badge>
+										)
+									}
+								]
+							: []
+					}
+				/>
+
+				<Modal
+					open={receiptOpen}
+					onClose={() => setReceiptOpen(false)}
+					title="Receipt"
+					size="lg"
+					footer={
+						<Button variant="secondary" onClick={() => setReceiptOpen(false)}>
+							Close
+						</Button>
+					}
+				>
+					<div className="bg-surface-2 flex justify-center rounded-md p-3">
+						<img
+							src={mediaUrl(txn.receipt_image)}
+							alt={`Receipt for ${txn.title || 'transaction'}`}
+							className="max-h-[70vh] w-auto max-w-full rounded-sm object-contain"
+						/>
+					</div>
+				</Modal>
+
+				<GroceryExportModal
+					open={exportOpen}
+					onClose={() => {
+						setExportOpen(false);
+						setExportBlob(null);
+						setPreviewUrl((prev) => {
+							if (prev) URL.revokeObjectURL(prev);
+							return '';
+						});
+					}}
+					previewUrl={previewUrl}
+					onDownload={() => {
+						if (exportBlob && exportName) {
+							downloadBlob(exportBlob, exportName);
+							toast.success('Image downloaded.');
+						}
+					}}
+					canShare={canShare}
+					sharing={sharing}
+					onShare={async () => {
+						if (!exportBlob || !exportName) return;
+						setSharing(true);
+						try {
+							const file = new File([exportBlob], exportName, { type: 'image/png' });
+							await shareImageFile(file, txn?.title);
+						} catch (err) {
+							if (err?.name !== 'AbortError') toast.error('Could not share image.');
+						} finally {
+							setSharing(false);
+						}
 					}}
 				/>
-			)}
-		</div>
+
+				{!mobile && (
+					<ReceiptImportModal
+						open={scanOpen}
+						onClose={() => setScanOpen(false)}
+						categories={expenseCategories}
+						incomeCategories={incomeCategories}
+						defaultCategoryId={defaultCategoryId}
+						onCommitted={() => {
+							queryClient.invalidateQueries({ queryKey: ['finance-transactions'] });
+							queryClient.invalidateQueries({ queryKey: ['finance-transaction-items'] });
+							queryClient.invalidateQueries({ queryKey: ['finance-balance'] });
+						}}
+					/>
+				)}
+			</div>
+		</FadeIn>
 	);
 }

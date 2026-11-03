@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Link } from 'react-router-dom';
-import { CopyPlus, ExternalLink, Info, Loader2, Plus, Trash2 } from 'lucide-react';
+import { CopyPlus, ExternalLink, Info, Plus, Trash2 } from 'lucide-react';
+
+import { Spinner } from './feedback';
 
 import { cn, formatCost } from '../../lib/format';
 import { CategoryMultiSelect } from '../finance/CategoryMultiSelect';
@@ -1123,13 +1125,7 @@ export function DataSheet({
 														col.align === 'right' && 'w-full justify-end'
 													)}
 												>
-													{cellPending && (
-														<Loader2
-															size={12}
-															className="text-primary shrink-0 animate-spin"
-															aria-hidden
-														/>
-													)}
+													{cellPending && <Spinner size={12} alt="" />}
 													<span className="min-w-0 truncate">{shown}</span>
 												</span>
 												{hasFillHandle && !cellPending && (

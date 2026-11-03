@@ -9,7 +9,7 @@ import { toast } from '../stores/toastStore';
 import { useIsProfileOwner } from '../stores/profileStore';
 import { PageHeader } from '../components/layout/PageHeader';
 import { StickyPageChrome } from '../components/layout/StickyPageChrome';
-import { Button, Card, EmptyState, LoadingScreen, Pagination } from '../components/ui';
+import { Button, Card, EmptyState, LoadingSwap, Pagination } from '../components/ui';
 
 const SECTION_PAGE_SIZE = 12;
 
@@ -208,7 +208,7 @@ export default function RegularBuysPage() {
 					icon={RefreshCw}
 					description="Items you buy consistently — history, due soon, and lapsed staples."
 					className="mb-0"
-					l
+					settingsShortcut
 					actions={
 						<Button variant="secondary" onClick={() => refetch()} disabled={isFetching}>
 							Refresh
@@ -218,25 +218,25 @@ export default function RegularBuysPage() {
 				<InsightTabBar tabs={INSIGHT_TABS} active={activeTab} onChange={setActiveTab} />
 			</StickyPageChrome>
 
-			{isLoading ? (
-				<LoadingScreen />
-			) : isError ? (
-				<EmptyState
-					title="Could not load purchase insights"
-					description="Try refreshing the page."
-				/>
-			) : (
-				INSIGHT_TABS.map((tab) => (
-					<InsightPanel key={tab.id} id={tab.id} active={activeTab}>
-						<Section
-							description={tab.description}
-							rows={data?.[tab.rowsKey]}
-							empty={tab.empty}
-							onMarkRegular={isOwner ? onMarkRegular : undefined}
-						/>
-					</InsightPanel>
-				))
-			)}
+			<LoadingSwap loading={isLoading}>
+				{isError ? (
+					<EmptyState
+						title="Could not load purchase insights"
+						description="Try refreshing the page."
+					/>
+				) : (
+					INSIGHT_TABS.map((tab) => (
+						<InsightPanel key={tab.id} id={tab.id} active={activeTab}>
+							<Section
+								description={tab.description}
+								rows={data?.[tab.rowsKey]}
+								empty={tab.empty}
+								onMarkRegular={isOwner ? onMarkRegular : undefined}
+							/>
+						</InsightPanel>
+					))
+				)}
+			</LoadingSwap>
 		</div>
 	);
 }

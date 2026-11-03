@@ -16,7 +16,7 @@ import {
 } from '../../lib/receiptScan';
 import { toast } from '../../stores/toastStore';
 import { cn } from '../../lib/format';
-import { Button, Input, LoadingScreen, Modal, Select } from '../ui';
+import { Button, FadeIn, Input, LoadingScreen, Modal, Select } from '../ui';
 import { PurchaseHint } from './PurchaseHint';
 import { ReceiptCropper } from './ReceiptCropper';
 import { CategoryMultiSelect, MAX_EXPENSE_CATEGORIES } from './CategoryMultiSelect';
@@ -641,11 +641,10 @@ export function ReceiptImportModal({
 
 			{analyzing ? (
 				<div className="space-y-3">
-					<LoadingScreen />
-					{analyzeLabel ? <p className="text-muted text-center text-sm">{analyzeLabel}</p> : null}
+					<LoadingScreen label={analyzeLabel || 'Analyzing…'} />
 				</div>
 			) : cropping && currentImage ? (
-				<div className="space-y-3">
+				<FadeIn className="space-y-3">
 					<StepperNav
 						index={cropIndex}
 						count={images.length}
@@ -665,7 +664,7 @@ export function ReceiptImportModal({
 							className="h-[min(58dvh,28rem)] md:h-[min(52vh,28rem)]"
 						/>
 					) : (
-						<LoadingScreen />
+						<LoadingScreen compact label="Loading image…" />
 					)}
 					<div className="flex flex-col gap-2 md:flex-row md:flex-wrap">
 						{images.length < MAX_BULK_RECEIPTS && (
@@ -699,9 +698,9 @@ export function ReceiptImportModal({
 							{images.length === 1 ? 'Clear' : 'Remove this image'}
 						</Button>
 					</div>
-				</div>
+				</FadeIn>
 			) : reviewing || failuresOnly ? (
-				<div className="space-y-4">
+				<FadeIn className="space-y-4">
 					{failures.length > 0 && (
 						<div className="border-danger/40 bg-danger/5 space-y-2 rounded-md border p-3">
 							<p className="text-fg text-sm font-medium">
@@ -795,7 +794,7 @@ export function ReceiptImportModal({
 							)}
 						</>
 					) : null}
-				</div>
+				</FadeIn>
 			) : (
 				<div className="border-line flex flex-col items-center gap-3 rounded-md border border-dashed px-4 py-8 text-center md:p-10">
 					<div className="bg-surface-2 text-muted flex h-12 w-12 items-center justify-center rounded-sm">

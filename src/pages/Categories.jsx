@@ -15,7 +15,7 @@ import {
 	Card,
 	EmptyState,
 	Input,
-	LoadingScreen,
+	LoadingSwap,
 	Modal,
 	Select
 } from '../components/ui';
@@ -189,6 +189,7 @@ export default function CategoriesPage() {
 					icon={FolderTree}
 					description="Nested expense and income labels for your ledger."
 					className="mb-0"
+					settingsShortcut
 					actions={
 						isOwner ? (
 							<Button onClick={openAdd}>
@@ -220,30 +221,30 @@ export default function CategoriesPage() {
 				</div>
 			</StickyPageChrome>
 
-			{isLoading ? (
-				<LoadingScreen />
-			) : isError ? (
-				<EmptyState icon={FolderTree} title="Could not load categories" />
-			) : tree.length === 0 ? (
-				<EmptyState
-					icon={FolderTree}
-					title="No categories"
-					description="Seed defaults appear after first finance access; add your own here."
-					action={
-						isOwner ? (
-							<Button onClick={openAdd}>
-								<Plus size={16} /> New Category
-							</Button>
-						) : null
-					}
-				/>
-			) : (
-				<ul className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
-					{tree.map((root) => (
-						<CategoryCard key={root.id} root={root} isOwner={isOwner} onDelete={requestDelete} />
-					))}
-				</ul>
-			)}
+			<LoadingSwap loading={isLoading}>
+				{isError ? (
+					<EmptyState icon={FolderTree} title="Could not load categories" />
+				) : tree.length === 0 ? (
+					<EmptyState
+						icon={FolderTree}
+						title="No categories"
+						description="Seed defaults appear after first finance access; add your own here."
+						action={
+							isOwner ? (
+								<Button onClick={openAdd}>
+									<Plus size={16} /> New Category
+								</Button>
+							) : null
+						}
+					/>
+				) : (
+					<ul className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+						{tree.map((root) => (
+							<CategoryCard key={root.id} root={root} isOwner={isOwner} onDelete={requestDelete} />
+						))}
+					</ul>
+				)}
+			</LoadingSwap>
 
 			<Modal
 				open={addOpen}
