@@ -126,16 +126,20 @@ export function MobileTransactionsView({
 	adding,
 	onRequestDelete,
 	onRequestEdit,
-	onAccounts
+	onAccounts,
+	viewToggle,
+	view = 'list',
+	calendar = null
 }) {
 	const [filterOpen, setFilterOpen] = useState(false);
 	const typeValue = filters.type || '';
 	const statusValue = filters.status ?? '';
 	const horizonValue = filters.horizon || '';
 	const extraFilters = Boolean(typeValue) || statusValue !== 'active' || Boolean(horizonValue);
+	const isCalendar = view === 'calendar';
 
 	return (
-		<div className="relative pb-24">
+		<div className={cn('relative', isCalendar ? 'pb-8' : 'pb-24')}>
 			<StickyPageChrome>
 				<header className="flex items-start justify-between gap-3">
 					<div className="min-w-0">
@@ -162,6 +166,8 @@ export function MobileTransactionsView({
 						<Settings size={20} strokeWidth={2} />
 					</Link>
 				</header>
+
+				{viewToggle ? <div className="flex justify-start">{viewToggle}</div> : null}
 
 				<div className="flex items-center gap-2">
 					<label className="border-line bg-surface-2 focus-within:border-primary relative flex min-h-11 flex-1 items-center gap-2 rounded-full border px-3.5">
@@ -201,84 +207,92 @@ export function MobileTransactionsView({
 				</div>
 			</StickyPageChrome>
 
-			<div className="mt-5 mb-2 flex items-baseline justify-between">
-				<h2 className="text-muted text-[11px] font-semibold tracking-[0.14em] uppercase">
-					Last transactions
-				</h2>
-				<p className="text-muted text-xs tabular-nums">{isLoading ? '…' : `${rows.length}`}</p>
-			</div>
+			{isCalendar ? (
+				<div className="mt-3">{calendar}</div>
+			) : (
+				<>
+					<div className="mt-5 mb-2 flex items-baseline justify-between">
+						<h2 className="text-muted text-[11px] font-semibold tracking-[0.14em] uppercase">
+							Last transactions
+						</h2>
+						<p className="text-muted text-xs tabular-nums">{isLoading ? '…' : `${rows.length}`}</p>
+					</div>
 
-			<LoadingSwap loading={isLoading} compact>
-				{isError ? (
-					<EmptyState
-						icon={ArrowLeftRight}
-						title="Could not load transactions"
-						description="Something went wrong while fetching your ledger."
-					/>
-				) : rows.length === 0 ? (
-					<EmptyState
-						icon={ArrowLeftRight}
-						title="No transactions yet"
-						description="Scan a receipt or add an expense."
-						action={
-							<Button onClick={onAdd} loading={adding}>
-								<Plus size={16} /> New expense
-							</Button>
-						}
-					/>
-				) : (
-					<ul className="divide-line divide-y">
-						{rows.map((row) => (
-							<li key={row.id} className="flex items-center gap-0.5">
-								<TransactionRowLink
-									row={row}
-									onLongPress={onRequestEdit}
-									className={cn(
-										'flex min-h-17 min-w-0 flex-1 cursor-pointer items-center gap-3 py-3 select-none',
-										row.status === 'archived' && 'opacity-55'
-									)}
-								>
-									<TypeGlyph type={row.type} />
-									<div className="min-w-0 flex-1">
-										<p className="text-fg truncate text-[15px] font-medium">
-											{row.title || 'Untitled'}
-										</p>
-										<p className="text-muted mt-0.5 truncate text-xs">
-											{sourcesById?.get(row.source)?.name
-												? `${sourcesById.get(row.source).name} · `
-												: ''}
-											{row.merchant || 'Unknown'}
-											{row.date_effective ? ` · ${formatDate(row.date_effective)}` : ''}
-											{row.status === 'archived' ? ' · Archived' : ''}
-										</p>
-									</div>
-									<span
-										className={cn(
-											'shrink-0 text-[15px] font-semibold tabular-nums',
-											amountToneClass(row.type)
+					<LoadingSwap loading={isLoading} compact>
+						{isError ? (
+							<EmptyState
+								icon={ArrowLeftRight}
+								title="Could not load transactions"
+								description="Something went wrong while fetching your ledger."
+							/>
+						) : rows.length === 0 ? (
+							<EmptyState
+								icon={ArrowLeftRight}
+								title="No transactions yet"
+								description="Scan a receipt or add an expense."
+								action={
+									onAdd ? (
+										<Button onClick={onAdd} loading={adding}>
+											<Plus size={16} /> New expense
+										</Button>
+									) : null
+								}
+							/>
+						) : (
+							<ul className="divide-line divide-y">
+								{rows.map((row) => (
+									<li key={row.id} className="flex items-center gap-0.5">
+										<TransactionRowLink
+											row={row}
+											onLongPress={onRequestEdit}
+											className={cn(
+												'flex min-h-17 min-w-0 flex-1 cursor-pointer items-center gap-3 py-3 select-none',
+												row.status === 'archived' && 'opacity-55'
+											)}
+										>
+											<TypeGlyph type={row.type} />
+											<div className="min-w-0 flex-1">
+												<p className="text-fg truncate text-[15px] font-medium">
+													{row.title || 'Untitled'}
+												</p>
+												<p className="text-muted mt-0.5 truncate text-xs">
+													{sourcesById?.get(row.source)?.name
+														? `${sourcesById.get(row.source).name} · `
+														: ''}
+													{row.merchant || 'Unknown'}
+													{row.date_effective ? ` · ${formatDate(row.date_effective)}` : ''}
+													{row.status === 'archived' ? ' · Archived' : ''}
+												</p>
+											</div>
+											<span
+												className={cn(
+													'shrink-0 text-[15px] font-semibold tabular-nums',
+													amountToneClass(row.type)
+												)}
+											>
+												{formatSignedAmount(row.amount, row.type)}
+											</span>
+										</TransactionRowLink>
+										{onRequestDelete && (
+											<Button
+												variant="ghost"
+												size="icon"
+												className="text-muted hover:text-danger h-11 w-11 shrink-0 rounded-full"
+												onClick={() => onRequestDelete(row)}
+												aria-label={`Delete ${row.title || 'transaction'}`}
+											>
+												<Trash2 size={18} />
+											</Button>
 										)}
-									>
-										{formatSignedAmount(row.amount, row.type)}
-									</span>
-								</TransactionRowLink>
-								{onRequestDelete && (
-									<Button
-										variant="ghost"
-										size="icon"
-										className="text-muted hover:text-danger h-11 w-11 shrink-0 rounded-full"
-										onClick={() => onRequestDelete(row)}
-										aria-label={`Delete ${row.title || 'transaction'}`}
-									>
-										<Trash2 size={18} />
-									</Button>
-								)}
-							</li>
-						))}
-					</ul>
-				)}
-			</LoadingSwap>
+									</li>
+								))}
+							</ul>
+						)}
+					</LoadingSwap>
+				</>
+			)}
 
-			{onAdd && (
+			{onAdd && !isCalendar ? (
 				<button
 					type="button"
 					onClick={onAdd}
@@ -288,7 +302,7 @@ export function MobileTransactionsView({
 				>
 					<Plus size={26} strokeWidth={2.4} />
 				</button>
-			)}
+			) : null}
 
 			<Modal open={filterOpen} onClose={() => setFilterOpen(false)} title="Filters" size="sm">
 				<div className="space-y-5">

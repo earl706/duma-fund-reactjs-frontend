@@ -84,12 +84,6 @@ export default function DashboardPage() {
 		include_archived: '0'
 	});
 
-	const { data: upcoming } = useFinanceBreakdown({
-		period,
-		direction: 'future',
-		include_archived: '0'
-	});
-
 	const analyticsParams = useMemo(
 		() => chartWindow(period, data?.start, data?.end),
 		[period, data?.start, data?.end]
@@ -156,7 +150,6 @@ export default function DashboardPage() {
 
 	const { net } = flowTotals(data?.totals);
 	const { moneyIn, moneyOut } = flowTotals(balance?.totals);
-	const upcomingFlow = flowTotals(upcoming?.totals);
 
 	const onPeriod = (next) => {
 		setPeriod(next);
@@ -176,9 +169,6 @@ export default function DashboardPage() {
 					rangeLabel={formatRangeLabel(data?.start, data?.end)}
 					moneyIn={moneyIn}
 					moneyOut={moneyOut}
-					upcomingIn={upcomingFlow.moneyIn}
-					upcomingOut={upcomingFlow.moneyOut}
-					upcomingRangeLabel={formatRangeLabel(upcoming?.start, upcoming?.end)}
 					net={net}
 					chips={chips}
 					selectedChip={selectedChip}

@@ -22,14 +22,14 @@ export function AppLayout() {
 	const [setupOpen, setSetupOpen] = useState(false);
 
 	return (
-		<div className="bg-bg flex h-full overflow-hidden">
+		<div className="bg-bg flex h-full min-h-0 overflow-hidden">
 			{!mobile && <Sidebar />}
-			<div className="flex min-w-0 flex-1 flex-col">
+			<div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
 				{!mobile && <Topbar />}
 				<main
 					className={cn(
 						'flex min-h-0 flex-1 flex-col',
-						lockHome ? 'overflow-hidden' : 'overflow-y-auto',
+						lockHome ? 'overflow-hidden' : 'overflow-y-auto overscroll-y-contain',
 						mobile && !lockHome && 'pb-[calc(5.5rem+env(safe-area-inset-bottom))]'
 					)}
 					id="main-content"

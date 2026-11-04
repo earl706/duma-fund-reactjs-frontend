@@ -73,7 +73,7 @@ export function Sidebar() {
 	const { sidebarOpen, closeSidebar } = useUIStore();
 	return (
 		<>
-			<aside className="border-line bg-surface hidden w-64 shrink-0 border-r lg:block">
+			<aside className="border-line bg-surface hidden h-full min-h-0 w-64 shrink-0 border-r lg:block">
 				<SidebarContent />
 			</aside>
 

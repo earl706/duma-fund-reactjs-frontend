@@ -12,6 +12,10 @@ export function fetchPurchaseInsights() {
 	return get('/finance/purchases/insights/');
 }
 
+export function fetchPurchaseHistory(title) {
+	return get('/finance/purchases/history/', { params: { title } });
+}
+
 export function fetchPurchaseNotifications() {
 	return get('/finance/purchases/notifications/');
 }
@@ -48,6 +52,18 @@ export function usePurchaseInsights(options = {}) {
 	});
 }
 
+export function usePurchaseHistory(title, options = {}) {
+	const profileId = useActiveProfileId();
+	const trimmed = (title || '').trim();
+	const { enabled, ...rest } = options;
+	return useQuery({
+		queryKey: ['finance-purchase-history', profileId, trimmed],
+		queryFn: () => fetchPurchaseHistory(trimmed),
+		enabled: profileId != null && trimmed.length > 0 && enabled !== false,
+		...rest
+	});
+}
+
 export function usePurchaseNotifications(options = {}) {
 	const profileId = useActiveProfileId();
 	const { enabled, ...rest } = options;
@@ -80,6 +96,7 @@ export function usePurchaseActions() {
 	const invalidate = () => {
 		queryClient.invalidateQueries({ queryKey: ['finance-purchase-lookup'] });
 		queryClient.invalidateQueries({ queryKey: ['finance-purchase-insights'] });
+		queryClient.invalidateQueries({ queryKey: ['finance-purchase-history'] });
 		queryClient.invalidateQueries({ queryKey: ['finance-purchase-notifications'] });
 	};
 

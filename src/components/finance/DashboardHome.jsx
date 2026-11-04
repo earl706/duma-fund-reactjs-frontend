@@ -86,60 +86,64 @@ function netToneClass(value) {
 
 function CashFlowChart({ points, loading }) {
 	return (
-		<LoadingSwap loading={loading} compact label="">
-			{!points.length ? (
-				<p className="text-muted flex h-full min-h-0 items-center justify-center text-sm">
-					No cash flow in this range.
-				</p>
-			) : (
-				<div className="h-full min-h-0 w-full">
-					<ResponsiveContainer width="100%" height="100%">
-						<BarChart
-							data={points}
-							margin={{ top: 8, right: 4, left: 0, bottom: 0 }}
-							barCategoryGap="12%"
-						>
-							<CartesianGrid stroke="var(--line)" strokeDasharray="3 6" vertical={false} />
-							<XAxis
-								dataKey="label"
-								tick={{ fill: 'var(--muted)', fontSize: 10 }}
-								axisLine={false}
-								tickLine={false}
-								interval={points.length <= 8 ? 0 : Math.ceil(points.length / 7) - 1}
-								minTickGap={8}
-							/>
-							<YAxis hide />
-							<Tooltip
-								cursor={{ fill: 'var(--surface-2)', fillOpacity: 0.6 }}
-								contentStyle={tooltipStyle()}
-								formatter={(value, name) => [formatCost(value), name]}
-							/>
-							<Bar
-								dataKey="moneyIn"
-								name="Money in"
-								stackId="flow"
-								fill="var(--success)"
-								maxBarSize={28}
-							/>
-							<Bar
-								dataKey="moneyOut"
-								name="Money out"
-								stackId="flow"
-								fill="var(--danger)"
-								maxBarSize={28}
-							/>
-						</BarChart>
-					</ResponsiveContainer>
-				</div>
-			)}
-		</LoadingSwap>
+		<div className="relative h-full min-h-0 w-full overflow-hidden">
+			<div className="absolute inset-0">
+				<LoadingSwap loading={loading} compact label="" className="h-full min-h-0">
+					{!points.length ? (
+						<p className="text-muted flex h-full min-h-0 items-center justify-center text-sm">
+							No cash flow in this range.
+						</p>
+					) : (
+						<div className="h-full min-h-0 w-full">
+							<ResponsiveContainer width="100%" height="100%">
+								<BarChart
+									data={points}
+									margin={{ top: 8, right: 4, left: 0, bottom: 0 }}
+									barCategoryGap="12%"
+								>
+									<CartesianGrid stroke="var(--line)" strokeDasharray="3 6" vertical={false} />
+									<XAxis
+										dataKey="label"
+										tick={{ fill: 'var(--muted)', fontSize: 10 }}
+										axisLine={false}
+										tickLine={false}
+										interval={points.length <= 8 ? 0 : Math.ceil(points.length / 7) - 1}
+										minTickGap={8}
+									/>
+									<YAxis hide />
+									<Tooltip
+										cursor={{ fill: 'var(--surface-2)', fillOpacity: 0.6 }}
+										contentStyle={tooltipStyle()}
+										formatter={(value, name) => [formatCost(value), name]}
+									/>
+									<Bar
+										dataKey="moneyIn"
+										name="Money in"
+										stackId="flow"
+										fill="var(--success)"
+										maxBarSize={28}
+									/>
+									<Bar
+										dataKey="moneyOut"
+										name="Money out"
+										stackId="flow"
+										fill="var(--danger)"
+										maxBarSize={28}
+									/>
+								</BarChart>
+							</ResponsiveContainer>
+						</div>
+					)}
+				</LoadingSwap>
+			</div>
+		</div>
 	);
 }
 
 function CategoryPie({ rows }) {
 	if (!rows.length) {
 		return (
-			<p className="text-muted flex h-full items-center justify-center text-sm">
+			<p className="text-muted flex h-full min-h-0 items-center justify-center text-sm">
 				No category spend in this period.
 			</p>
 		);
@@ -151,30 +155,32 @@ function CategoryPie({ rows }) {
 	}));
 
 	return (
-		<div className="flex h-full min-h-0 items-center gap-3">
-			<div className="h-full min-h-0 min-w-[7.5rem] flex-1">
-				<ResponsiveContainer width="100%" height="100%">
-					<PieChart>
-						<Pie
-							data={data}
-							dataKey="amount"
-							nameKey="name"
-							innerRadius="58%"
-							outerRadius="88%"
-							paddingAngle={2}
-							stroke="var(--surface)"
-							strokeWidth={1}
-						>
-							{data.map((row) => (
-								<Cell key={row.id ?? `slice-${row.name}`} fill={row.color} />
-							))}
-						</Pie>
-						<Tooltip
-							contentStyle={tooltipStyle()}
-							formatter={(value, name) => [formatCost(value), name]}
-						/>
-					</PieChart>
-				</ResponsiveContainer>
+		<div className="flex h-full min-h-0 items-center gap-3 overflow-hidden">
+			<div className="relative h-full min-h-0 min-w-[7.5rem] flex-1 overflow-hidden">
+				<div className="absolute inset-0">
+					<ResponsiveContainer width="100%" height="100%">
+						<PieChart>
+							<Pie
+								data={data}
+								dataKey="amount"
+								nameKey="name"
+								innerRadius="58%"
+								outerRadius="88%"
+								paddingAngle={2}
+								stroke="var(--surface)"
+								strokeWidth={1}
+							>
+								{data.map((row) => (
+									<Cell key={row.id ?? `slice-${row.name}`} fill={row.color} />
+								))}
+							</Pie>
+							<Tooltip
+								contentStyle={tooltipStyle()}
+								formatter={(value, name) => [formatCost(value), name]}
+							/>
+						</PieChart>
+					</ResponsiveContainer>
+				</div>
 			</div>
 			<ul className="flex min-h-0 w-[52%] shrink-0 flex-col justify-center gap-1.5 overflow-auto">
 				{data.map((row) => (
@@ -200,10 +206,6 @@ function DashboardPane({
 	balance,
 	moneyIn,
 	moneyOut,
-	period,
-	upcomingIn,
-	upcomingOut,
-	upcomingRangeLabel,
 	chips,
 	selectedChip,
 	onChip,
@@ -244,35 +246,6 @@ function DashboardPane({
 						))}
 					</ul>
 				)}
-			</section>
-
-			<section className="border-line bg-surface shrink-0 rounded-lg border px-4 py-3">
-				<div className="flex items-baseline justify-between gap-3">
-					<p className="text-muted text-xs font-semibold tracking-wide uppercase">
-						Next {period} days
-					</p>
-					{upcomingRangeLabel ? (
-						<p className="text-muted truncate text-[11px]">{upcomingRangeLabel}</p>
-					) : null}
-				</div>
-				<div className="mt-2 grid grid-cols-2 gap-3">
-					<div>
-						<p className="text-success flex items-center gap-1 text-[11px] font-semibold tracking-wide uppercase">
-							<ArrowDownLeft size={12} /> In
-						</p>
-						<p className="text-success mt-0.5 text-base font-semibold tabular-nums">
-							+{formatCost(upcomingIn)}
-						</p>
-					</div>
-					<div>
-						<p className="text-danger flex items-center gap-1 text-[11px] font-semibold tracking-wide uppercase">
-							<ArrowUpRight size={12} /> Out
-						</p>
-						<p className="text-danger mt-0.5 text-base font-semibold tabular-nums">
-							−{formatCost(upcomingOut)}
-						</p>
-					</div>
-				</div>
 			</section>
 
 			<div className="grid shrink-0 grid-cols-2 gap-3">
@@ -398,9 +371,9 @@ function AnalyticsPane({
 					description="Something went wrong while fetching spend data."
 				/>
 			) : (
-				<LoadingSwap loading={breakdownLoading} compact>
-					<div className="grid min-h-0 flex-1 grid-rows-2 gap-3">
-						<div className="border-line bg-surface flex min-h-0 flex-col rounded-lg border p-4">
+				<LoadingSwap loading={breakdownLoading} compact className="flex min-h-0 flex-col">
+					<div className="grid h-full min-h-0 grid-rows-2 gap-3">
+						<div className="border-line bg-surface flex min-h-0 flex-col overflow-hidden rounded-lg border p-4">
 							<div className="flex shrink-0 items-start justify-between gap-3">
 								<div>
 									<p className="text-muted text-xs font-medium tracking-wide uppercase">Net</p>
@@ -416,9 +389,9 @@ function AnalyticsPane({
 								<CashFlowChart points={chartPoints} loading={chartLoading} />
 							</div>
 						</div>
-						<div className="border-line bg-surface flex min-h-0 flex-col rounded-lg border p-4">
-							<p className="text-fg mb-2 text-sm font-semibold">Breakdown</p>
-							<div className="min-h-0 flex-1">
+						<div className="border-line bg-surface flex min-h-0 flex-col overflow-hidden rounded-lg border p-4">
+							<p className="text-fg mb-2 shrink-0 text-sm font-semibold">Breakdown</p>
+							<div className="min-h-0 flex-1 overflow-hidden">
 								<CategoryPie rows={barRows} />
 							</div>
 						</div>
@@ -473,9 +446,6 @@ export function DashboardHome({
 	rangeLabel,
 	moneyIn,
 	moneyOut,
-	upcomingIn = 0,
-	upcomingOut = 0,
-	upcomingRangeLabel,
 	net,
 	chips,
 	selectedChip,
@@ -564,10 +534,6 @@ export function DashboardHome({
 			balance={balance}
 			moneyIn={moneyIn}
 			moneyOut={moneyOut}
-			period={period}
-			upcomingIn={upcomingIn}
-			upcomingOut={upcomingOut}
-			upcomingRangeLabel={upcomingRangeLabel}
 			chips={chips}
 			selectedChip={selectedChip}
 			onChip={onChip}
@@ -596,7 +562,8 @@ export function DashboardHome({
 				description={rangeLabel}
 				className="mb-1 shrink-0"
 				settingsShortcut
-				corner={pager ? <ProfileSwitcher className="w-40 sm:w-48" compact /> : null}
+				cornerAbove={pager}
+				corner={pager ? <ProfileSwitcher className="min-w-0 flex-1" compact /> : null}
 				actions={
 					showScan ? (
 						<Button variant="secondary" size="sm" className="h-8 shrink-0" onClick={onScan}>

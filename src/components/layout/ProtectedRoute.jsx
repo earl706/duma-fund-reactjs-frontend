@@ -31,5 +31,5 @@ export function ProtectedRoute({ children }) {
 	if (profileStatus === 'idle' || profileStatus === 'loading') {
 		return <LoadingScreen label="Loading profiles…" />;
 	}
-	return <FadeIn>{children}</FadeIn>;
+	return <FadeIn className="h-full min-h-0">{children}</FadeIn>;
 }

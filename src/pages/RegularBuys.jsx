@@ -2,18 +2,30 @@ import { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { RefreshCw } from 'lucide-react';
 
-import { formatCost } from '../lib/format';
+import { cn, formatCost } from '../lib/format';
 import { usePurchaseActions, usePurchaseInsights } from '../lib/purchases';
 import { paginateClient } from '../hooks/useListControls';
 import { toast } from '../stores/toastStore';
 import { useIsProfileOwner } from '../stores/profileStore';
 import { PageHeader } from '../components/layout/PageHeader';
 import { StickyPageChrome } from '../components/layout/StickyPageChrome';
+import {
+	COMPARE_MODES,
+	PurchasePriceDetailModal
+} from '../components/finance/PurchasePriceDetailModal';
+import { priceDeltaParts } from '../components/finance/purchasePriceDelta';
 import { Button, Card, EmptyState, LoadingSwap, Pagination } from '../components/ui';
 
 const SECTION_PAGE_SIZE = 12;
 
 const INSIGHT_TABS = [
+	{
+		id: 'all',
+		label: 'All',
+		rowsKey: 'all',
+		description: 'Every tracked product, newest purchases first.',
+		empty: 'No purchase history yet.'
+	},
 	{
 		id: 'due-soon',
 		label: 'Due soon',
@@ -81,6 +93,32 @@ function InsightTabBar({ tabs, active, onChange }) {
 	);
 }
 
+function CompareModeBar({ mode, onChange }) {
+	return (
+		<div
+			className="border-line bg-surface-2 inline-flex rounded-md border p-0.5"
+			role="group"
+			aria-label="Price change baseline"
+		>
+			{COMPARE_MODES.map((g) => (
+				<Button
+					key={g.value}
+					type="button"
+					size="sm"
+					variant={mode === g.value ? 'primary' : 'ghost'}
+					className="h-8 shrink-0"
+					title={g.title}
+					aria-label={g.title}
+					aria-pressed={mode === g.value}
+					onClick={() => onChange(g.value)}
+				>
+					{g.label}
+				</Button>
+			))}
+		</div>
+	);
+}
+
 function InsightPanel({ id, active, children }) {
 	return (
 		<div
@@ -97,20 +135,38 @@ function InsightPanel({ id, active, children }) {
 function itemStats(row) {
 	const when = row.last_purchased_at || '—';
 	const ago = row.days_since_last != null ? ` (${row.days_since_last}d ago)` : '';
-	return `${formatCost(row.typical_price)} · qty ${row.typical_qty ?? '—'} · ${
-		row.last_merchant || 'Unknown'
-	} · ${when}${ago}`;
+	return `qty ${row.typical_qty ?? '—'} · ${row.last_merchant || 'Unknown'} · ${when}${ago}`;
 }
 
-function ItemCard({ row, onMarkRegular }) {
+function ItemCard({ row, compareMode, onOpen, onMarkRegular }) {
 	const showMark = Boolean(onMarkRegular) && row.status !== 'regular';
 	const stats = itemStats(row);
+	const lastPrice = row.last_price ?? row.typical_price;
+	const delta = priceDeltaParts(row, compareMode);
 
 	return (
-		<Card as="li" className="flex h-full min-w-0 flex-col gap-2 p-3">
+		<Card
+			as="li"
+			role="button"
+			tabIndex={0}
+			className="hover:border-primary/40 focus-visible:ring-primary flex h-full min-w-0 cursor-pointer flex-col gap-2 p-3 transition-colors focus-visible:ring-2 focus-visible:outline-none"
+			onClick={() => onOpen?.(row)}
+			onKeyDown={(e) => {
+				if (e.key === 'Enter' || e.key === ' ') {
+					e.preventDefault();
+					onOpen?.(row);
+				}
+			}}
+		>
 			<div className="text-fg min-w-0 truncate font-medium" title={row.display_title}>
 				{row.display_title}
 			</div>
+			<p className="text-fg flex flex-wrap items-baseline gap-x-2 text-sm tabular-nums">
+				<span className="font-medium">{formatCost(lastPrice)}</span>
+				{delta ? (
+					<span className={cn('text-xs font-medium', delta.className)}>{delta.text}</span>
+				) : null}
+			</p>
 			<p className="text-muted truncate text-sm" title={stats}>
 				{stats}
 			</p>
@@ -119,6 +175,7 @@ function ItemCard({ row, onMarkRegular }) {
 					<Link
 						to={`/transactions/${row.last_transaction_id}`}
 						className="text-primary text-sm hover:underline"
+						onClick={(e) => e.stopPropagation()}
 					>
 						Open last transaction
 					</Link>
@@ -131,7 +188,10 @@ function ItemCard({ row, onMarkRegular }) {
 						size="sm"
 						type="button"
 						className="shrink-0"
-						onClick={() => onMarkRegular(row.display_title)}
+						onClick={(e) => {
+							e.stopPropagation();
+							onMarkRegular(row.display_title);
+						}}
 					>
 						Mark regular
 					</Button>
@@ -141,7 +201,7 @@ function ItemCard({ row, onMarkRegular }) {
 	);
 }
 
-function Section({ description, rows, empty, onMarkRegular }) {
+function Section({ description, rows, empty, compareMode, onOpen, onMarkRegular }) {
 	const [page, setPage] = useState(1);
 	const items = rows ?? [];
 	const paged = paginateClient(items, page, SECTION_PAGE_SIZE);
@@ -159,7 +219,13 @@ function Section({ description, rows, empty, onMarkRegular }) {
 				<>
 					<ul className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-4">
 						{paged.results.map((row) => (
-							<ItemCard key={row.normalized_title} row={row} onMarkRegular={onMarkRegular} />
+							<ItemCard
+								key={row.normalized_title}
+								row={row}
+								compareMode={compareMode}
+								onOpen={onOpen}
+								onMarkRegular={onMarkRegular}
+							/>
 						))}
 					</ul>
 					<Pagination
@@ -180,6 +246,8 @@ export default function RegularBuysPage() {
 	const { data, isLoading, isError, refetch, isFetching } = usePurchaseInsights();
 	const { markRegular } = usePurchaseActions();
 	const isOwner = useIsProfileOwner();
+	const [compareMode, setCompareMode] = useState('previous');
+	const [detailRow, setDetailRow] = useState(null);
 
 	const activeTab = resolveInsightTab(searchParams.get('tab'));
 	const setActiveTab = (id) => {
@@ -215,7 +283,10 @@ export default function RegularBuysPage() {
 						</Button>
 					}
 				/>
-				<InsightTabBar tabs={INSIGHT_TABS} active={activeTab} onChange={setActiveTab} />
+				<div className="flex flex-wrap items-center gap-2">
+					<InsightTabBar tabs={INSIGHT_TABS} active={activeTab} onChange={setActiveTab} />
+					<CompareModeBar mode={compareMode} onChange={setCompareMode} />
+				</div>
 			</StickyPageChrome>
 
 			<LoadingSwap loading={isLoading}>
@@ -231,12 +302,22 @@ export default function RegularBuysPage() {
 								description={tab.description}
 								rows={data?.[tab.rowsKey]}
 								empty={tab.empty}
+								compareMode={compareMode}
+								onOpen={setDetailRow}
 								onMarkRegular={isOwner ? onMarkRegular : undefined}
 							/>
 						</InsightPanel>
 					))
 				)}
 			</LoadingSwap>
+
+			<PurchasePriceDetailModal
+				open={Boolean(detailRow)}
+				onClose={() => setDetailRow(null)}
+				title={detailRow?.display_title || detailRow?.normalized_title || ''}
+				compareMode={compareMode}
+				onCompareMode={setCompareMode}
+			/>
 		</div>
 	);
 }

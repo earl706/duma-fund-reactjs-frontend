@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeftRight, BookUser, FileDown, FileUp, Plus, ScanLine } from 'lucide-react';
 
@@ -35,6 +35,15 @@ import { ReceiptImportModal } from '../components/finance/ReceiptImportModal';
 import { MobileTransactionsView } from '../components/finance/MobileTransactionsView';
 import { MobileTransactionEditModal } from '../components/finance/MobileTransactionEditModal';
 import {
+	SegmentedToggle,
+	TransactionCalendarView
+} from '../components/finance/TransactionCalendarView';
+import {
+	parseAnchorDate,
+	toISODate,
+	visibleRange
+} from '../components/finance/transactionCalendar';
+import {
 	formatCategoryTags,
 	MAX_EXPENSE_CATEGORIES
 } from '../components/finance/CategoryMultiSelect';
@@ -50,6 +59,13 @@ import {
 	Modal,
 	RecordInfoModal
 } from '../components/ui';
+
+const VIEW_OPTIONS = [
+	{ value: 'list', label: 'List', title: 'List view' },
+	{ value: 'calendar', label: 'Calendar', title: 'Calendar view' }
+];
+
+const CAL_VALUES = new Set(['day', 'week', 'month']);
 
 const TYPE_OPTIONS = [
 	{ value: 'expense', label: 'Expense' },
@@ -102,6 +118,7 @@ function categoryLabel(cat) {
 
 export default function TransactionsPage() {
 	const navigate = useNavigate();
+	const [searchParams, setSearchParams] = useSearchParams();
 	const queryClient = useQueryClient();
 	const mobile = useMobileLayout();
 	const { data: balance } = useFinanceBalance();
@@ -110,6 +127,61 @@ export default function TransactionsPage() {
 	const { data: categoriesData } = categoriesApi.useList({ page_size: 100, kind: 'expense' });
 	const { data: incomeCats } = categoriesApi.useList({ page_size: 100, kind: 'income' });
 	const { data: sourcesData } = sourcesApi.useList({ page_size: 100 });
+
+	const view = searchParams.get('view') === 'calendar' ? 'calendar' : 'list';
+	const calGrain = CAL_VALUES.has(searchParams.get('cal')) ? searchParams.get('cal') : 'month';
+	const dateParam = searchParams.get('date');
+	const calAnchor = useMemo(() => parseAnchorDate(dateParam), [dateParam]);
+
+	const patchSearchParams = useCallback(
+		(mutate) => {
+			setSearchParams(
+				(prev) => {
+					const next = new URLSearchParams(prev);
+					mutate(next);
+					return next;
+				},
+				{ replace: true }
+			);
+		},
+		[setSearchParams]
+	);
+
+	const setView = (nextView) => {
+		patchSearchParams((next) => {
+			if (nextView === 'list') next.delete('view');
+			else next.set('view', nextView);
+		});
+	};
+
+	const setCalGrain = (grain) => {
+		patchSearchParams((next) => {
+			next.set('view', 'calendar');
+			if (grain === 'month') next.delete('cal');
+			else next.set('cal', grain);
+		});
+	};
+
+	const setCalAnchor = (date) => {
+		patchSearchParams((next) => {
+			next.set('view', 'calendar');
+			const iso = toISODate(date instanceof Date ? date : parseAnchorDate(date));
+			const today = toISODate(new Date());
+			if (iso === today) next.delete('date');
+			else next.set('date', iso);
+		});
+	};
+
+	const calRange = useMemo(() => visibleRange(calAnchor, calGrain), [calAnchor, calGrain]);
+	const calParams = useMemo(
+		() => ({
+			status: 'active',
+			date_effective__gte: toISODate(calRange.start),
+			date_effective__lte: toISODate(calRange.end),
+			ordering: '-date_effective,-created_at'
+		}),
+		[calRange]
+	);
 
 	const expenseCategories = useMemo(() => categoriesData?.results || [], [categoriesData?.results]);
 	const incomeCategories = useMemo(() => incomeCats?.results || [], [incomeCats?.results]);
@@ -172,8 +244,27 @@ export default function TransactionsPage() {
 	} = useQuery({
 		queryKey: ['finance-transactions', 'all', profileId, listParams],
 		queryFn: () => fetchAllPages('/finance/transactions/', listParams),
-		enabled: profileId != null
+		enabled: profileId != null && view === 'list'
 	});
+
+	const {
+		data: calendarRows = [],
+		isLoading: calendarLoading,
+		isError: calendarError
+	} = useQuery({
+		queryKey: ['finance-transactions', 'calendar', profileId, calParams],
+		queryFn: () => fetchAllPages('/finance/transactions/', calParams),
+		enabled: profileId != null && view === 'calendar'
+	});
+
+	const viewToggle = (
+		<SegmentedToggle
+			options={VIEW_OPTIONS}
+			value={view}
+			onChange={setView}
+			ariaLabel="Transactions view"
+		/>
+	);
 
 	const [deleteTarget, setDeleteTarget] = useState(null);
 	const [editTarget, setEditTarget] = useState(null);
@@ -850,6 +941,20 @@ export default function TransactionsPage() {
 					onRequestDelete={canEdit ? setDeleteTarget : undefined}
 					onRequestEdit={canEdit ? setEditTarget : undefined}
 					onAccounts={() => setAccountsOpen(true)}
+					viewToggle={viewToggle}
+					view={view}
+					calendar={
+						<TransactionCalendarView
+							anchor={calAnchor}
+							grain={calGrain}
+							onAnchorChange={setCalAnchor}
+							onGrainChange={setCalGrain}
+							transactions={calendarRows}
+							loading={calendarLoading}
+							error={calendarError}
+							aggregateOnly
+						/>
+					}
 				/>
 				<AccountsInformationModal open={accountsOpen} onClose={() => setAccountsOpen(false)} />
 				<MobileTransactionEditModal
@@ -952,41 +1057,54 @@ export default function TransactionsPage() {
 							]
 						}
 					]}
+					trailing={viewToggle}
 				/>
 			</StickyPageChrome>
 
-			<LoadingSwap loading={isLoading}>
-				{isError ? (
-					<EmptyState
-						icon={ArrowLeftRight}
-						title="Could not load transactions"
-						description="Something went wrong while fetching your ledger."
-					/>
-				) : (
-					<DataSheet
-						rows={rows}
-						columns={columns}
-						ordering={ordering}
-						defaultOrdering={DEFAULT_ORDERING}
-						onOrderingChange={setOrdering}
-						onCommit={commitCell}
-						onAdd={canEdit ? addExpense : undefined}
-						onRequestDelete={canEdit ? setDeleteTarget : undefined}
-						onRequestDuplicate={canEdit ? duplicateTxn : undefined}
-						onRequestInfo={setInfoTarget}
-						onBulkDelete={canEdit ? setBulkDeleteIds : undefined}
-						onSelectionChange={onSelectionChange}
-						selectable={canEdit}
-						readOnly={!canEdit}
-						adding={createTxn.isPending || duplicating}
-						saving={updateTxn.isPending || duplicating}
-						pendingCells={pendingCells}
-						autoEdit={autoEdit}
-						addLabel="New transaction"
-						emptyMessage="No transactions yet. Scan a receipt or add an expense."
-					/>
-				)}
-			</LoadingSwap>
+			{view === 'calendar' ? (
+				<TransactionCalendarView
+					anchor={calAnchor}
+					grain={calGrain}
+					onAnchorChange={setCalAnchor}
+					onGrainChange={setCalGrain}
+					transactions={calendarRows}
+					loading={calendarLoading}
+					error={calendarError}
+				/>
+			) : (
+				<LoadingSwap loading={isLoading}>
+					{isError ? (
+						<EmptyState
+							icon={ArrowLeftRight}
+							title="Could not load transactions"
+							description="Something went wrong while fetching your ledger."
+						/>
+					) : (
+						<DataSheet
+							rows={rows}
+							columns={columns}
+							ordering={ordering}
+							defaultOrdering={DEFAULT_ORDERING}
+							onOrderingChange={setOrdering}
+							onCommit={commitCell}
+							onAdd={canEdit ? addExpense : undefined}
+							onRequestDelete={canEdit ? setDeleteTarget : undefined}
+							onRequestDuplicate={canEdit ? duplicateTxn : undefined}
+							onRequestInfo={setInfoTarget}
+							onBulkDelete={canEdit ? setBulkDeleteIds : undefined}
+							onSelectionChange={onSelectionChange}
+							selectable={canEdit}
+							readOnly={!canEdit}
+							adding={createTxn.isPending || duplicating}
+							saving={updateTxn.isPending || duplicating}
+							pendingCells={pendingCells}
+							autoEdit={autoEdit}
+							addLabel="New transaction"
+							emptyMessage="No transactions yet. Scan a receipt or add an expense."
+						/>
+					)}
+				</LoadingSwap>
+			)}
 
 			{deleteDialog}
 
