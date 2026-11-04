@@ -232,9 +232,9 @@ function DashboardPane({
 					</p>
 				)}
 				{balance?.sources?.length > 0 && (
-					<ul className="border-line mt-3 space-y-1.5 border-t pt-3">
+					<ul className="border-line mt-3 flex flex-row flex-wrap items-baseline gap-x-4 gap-y-1.5 border-t pt-3">
 						{balance.sources.slice(0, 3).map((src) => (
-							<li key={src.id} className="flex items-baseline justify-between gap-3 text-sm">
+							<li key={src.id} className="flex min-w-0 items-baseline gap-2 text-sm">
 								<span
 									className={`truncate ${src.status === 'archived' ? 'text-muted' : 'text-fg'}`}
 								>
