@@ -17,6 +17,7 @@ import {
 import { toast } from '../../stores/toastStore';
 import { cn } from '../../lib/format';
 import { Button, FadeIn, Input, LoadingScreen, Modal, Select } from '../ui';
+import { InlineMoneyInput, MoneyField } from './MoneyField';
 import { PurchaseHint } from './PurchaseHint';
 import { ReceiptCropper } from './ReceiptCropper';
 import { CategoryMultiSelect, MAX_EXPENSE_CATEGORIES } from './CategoryMultiSelect';
@@ -933,19 +934,17 @@ function RetailDraftEditor({
 							</Button>
 						</div>
 						<div className="grid grid-cols-3 gap-2">
-							<Input
+							<MoneyField
+								id={`receipt-price-${row._key}`}
 								label="Price"
-								type="number"
-								inputMode="decimal"
 								min="0"
 								step="0.01"
 								value={row.cost}
 								onChange={(e) => setRow(row._key, 'cost', e.target.value)}
 							/>
-							<Input
+							<MoneyField
+								id={`receipt-qty-${row._key}`}
 								label="Qty"
-								type="number"
-								inputMode="decimal"
 								min="0"
 								step="0.01"
 								value={row.quantity}
@@ -1000,23 +999,21 @@ function RetailDraftEditor({
 										/>
 									</td>
 									<td className="p-1">
-										<input
-											type="number"
-											min="0"
-											step="0.01"
-											className={`${TABLE_INPUT} text-right tabular-nums`}
+										<InlineMoneyInput
+											id={`receipt-table-price-${row._key}`}
+											label="Price"
 											value={row.cost}
 											onChange={(e) => setRow(row._key, 'cost', e.target.value)}
+											inputClassName={`${TABLE_INPUT} text-right tabular-nums`}
 										/>
 									</td>
 									<td className="p-1">
-										<input
-											type="number"
-											min="0"
-											step="0.01"
-											className={`${TABLE_INPUT} text-right tabular-nums`}
+										<InlineMoneyInput
+											id={`receipt-table-qty-${row._key}`}
+											label="Qty"
 											value={row.quantity}
 											onChange={(e) => setRow(row._key, 'quantity', e.target.value)}
+											inputClassName={`${TABLE_INPUT} text-right tabular-nums`}
 										/>
 									</td>
 									<td className="p-1">
@@ -1176,10 +1173,9 @@ function BankDraftEditor({
 									</option>
 								))}
 							</Select>
-							<Input
+							<MoneyField
+								id={`receipt-bank-amount-${row._key}`}
 								label="Amount"
-								type="number"
-								inputMode="decimal"
 								min="0"
 								step="0.01"
 								value={row.amount}
@@ -1314,13 +1310,12 @@ function BankDraftEditor({
 										</select>
 									</td>
 									<td className="p-1">
-										<input
-											type="number"
-											min="0"
-											step="0.01"
-											className={`${TABLE_INPUT} text-right tabular-nums`}
+										<InlineMoneyInput
+											id={`receipt-bank-table-amount-${row._key}`}
+											label="Amount"
 											value={row.amount}
 											onChange={(e) => setEntry(row._key, 'amount', e.target.value)}
+											inputClassName={`${TABLE_INPUT} text-right tabular-nums`}
 										/>
 									</td>
 									<td className="p-1">

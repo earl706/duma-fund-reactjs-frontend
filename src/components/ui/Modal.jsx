@@ -11,7 +11,15 @@ import { Button } from './Button';
  * - role="dialog" + aria-modal for screen readers.
  * - size="xl" is a full-viewport sheet on narrow screens (safe-area padded).
  */
-export function Modal({ open, onClose, title, children, footer, size = 'md' }) {
+export function Modal({
+	open,
+	onClose,
+	title,
+	children,
+	footer,
+	size = 'md',
+	zClassName = 'z-50'
+}) {
 	useEffect(() => {
 		if (!open) return;
 		const onKey = (e) => e.key === 'Escape' && onClose?.();
@@ -36,7 +44,7 @@ export function Modal({ open, onClose, title, children, footer, size = 'md' }) {
 		<AnimatePresence>
 			{open && (
 				<motion.div
-					className="fixed inset-0 z-50 flex items-end justify-center p-0 sm:items-center sm:p-4"
+					className={`fixed inset-0 ${zClassName} flex items-end justify-center p-0 sm:items-center sm:p-4`}
 					initial={{ opacity: 0 }}
 					animate={{ opacity: 1 }}
 					exit={{ opacity: 0 }}

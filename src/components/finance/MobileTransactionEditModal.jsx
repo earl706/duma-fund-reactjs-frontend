@@ -5,6 +5,7 @@ import { ChevronsUpDown } from 'lucide-react';
 import { cn, formatDateShort, parseDateShort } from '../../lib/format';
 import { Button, Input, Modal } from '../ui';
 import { CategoryMultiSelect, MAX_EXPENSE_CATEGORIES } from './CategoryMultiSelect';
+import { MoneyField } from './MoneyField';
 
 const TYPE_OPTIONS = [
 	{ value: 'expense', label: 'Expense' },
@@ -341,10 +342,9 @@ export function MobileTransactionEditModal({
 				/>
 
 				<div className="space-y-1.5">
-					<Input
+					<MoneyField
+						id={`mobile-txn-amount-${row?.id ?? 'new'}`}
 						label="Amount"
-						type="number"
-						inputMode="decimal"
 						step="0.01"
 						min="0"
 						value={form.amount}

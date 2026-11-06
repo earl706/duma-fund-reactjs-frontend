@@ -1,7 +1,8 @@
 import { useNavigate } from 'react-router-dom';
-import { Menu, Search } from 'lucide-react';
+import { Calculator, Menu, Search } from 'lucide-react';
 
 import { useAuthStore } from '../../stores/authStore';
+import { useCalculatorStore } from '../../stores/calculatorStore';
 import { useUIStore } from '../../stores/uiStore';
 import { Avatar, Button } from '../ui';
 import { InviteBell } from './InviteInbox';
@@ -12,6 +13,7 @@ export function Topbar() {
 	const navigate = useNavigate();
 	const user = useAuthStore((s) => s.user);
 	const { toggleSidebar, openPalette } = useUIStore();
+	const openCalculator = useCalculatorStore((s) => s.openCalculator);
 
 	return (
 		<header className="border-line bg-surface/80 sticky top-0 z-30 flex h-16 items-center gap-2 border-b px-4 backdrop-blur">
@@ -37,6 +39,15 @@ export function Topbar() {
 			</button>
 
 			<div className="flex flex-1 items-center justify-end gap-1">
+				<Button
+					variant="ghost"
+					size="icon"
+					onClick={() => openCalculator()}
+					aria-label="Open calculator"
+					title="Calculator (⌘=)"
+				>
+					<Calculator size={18} />
+				</Button>
 				<ThemeToggle />
 				<InviteBell />
 				<PurchaseBell />

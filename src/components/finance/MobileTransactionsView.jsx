@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import {
 	ArrowLeftRight,
 	BookUser,
@@ -54,9 +54,11 @@ function FilterChip({ selected, onClick, children }) {
 }
 
 /**
- * Link that opens detail on tap; long-press calls onLongPress (editors).
+ * Opens detail on tap via navigate (not <a>, so mobile browsers skip link preview);
+ * long-press calls onLongPress (editors).
  */
-function TransactionRowLink({ row, className, children, onLongPress }) {
+function TransactionRowButton({ row, className, children, onLongPress }) {
+	const navigate = useNavigate();
 	const timerRef = useRef(null);
 	const suppressClickRef = useRef(false);
 
@@ -87,9 +89,10 @@ function TransactionRowLink({ row, className, children, onLongPress }) {
 	const endPress = () => clearTimer();
 
 	return (
-		<Link
-			to={`/transactions/${row.id}`}
-			className={className}
+		<button
+			type="button"
+			className={cn('text-left', className)}
+			style={{ WebkitTouchCallout: 'none' }}
 			onPointerDown={startPress}
 			onPointerUp={endPress}
 			onPointerCancel={endPress}
@@ -97,15 +100,16 @@ function TransactionRowLink({ row, className, children, onLongPress }) {
 			onContextMenu={(e) => {
 				if (onLongPress) e.preventDefault();
 			}}
-			onClick={(e) => {
+			onClick={() => {
 				if (suppressClickRef.current) {
-					e.preventDefault();
 					suppressClickRef.current = false;
+					return;
 				}
+				navigate(`/transactions/${row.id}`);
 			}}
 		>
 			{children}
-		</Link>
+		</button>
 	);
 }
 
@@ -242,7 +246,7 @@ export function MobileTransactionsView({
 							<ul className="divide-line divide-y">
 								{rows.map((row) => (
 									<li key={row.id} className="flex items-center gap-0.5">
-										<TransactionRowLink
+										<TransactionRowButton
 											row={row}
 											onLongPress={onRequestEdit}
 											className={cn(
@@ -272,7 +276,7 @@ export function MobileTransactionsView({
 											>
 												{formatSignedAmount(row.amount, row.type)}
 											</span>
-										</TransactionRowLink>
+										</TransactionRowButton>
 										{onRequestDelete && (
 											<Button
 												variant="ghost"

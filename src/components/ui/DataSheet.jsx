@@ -1,12 +1,21 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Link } from 'react-router-dom';
-import { CopyPlus, ExternalLink, Info, Plus, Trash2 } from 'lucide-react';
+import {
+	ArrowDownToLine,
+	ArrowUpToLine,
+	CopyPlus,
+	ExternalLink,
+	Info,
+	Plus,
+	Trash2
+} from 'lucide-react';
 
 import { Spinner } from './feedback';
 
 import { cn, formatCost } from '../../lib/format';
 import { CategoryMultiSelect } from '../finance/CategoryMultiSelect';
+import { InlineMoneyInput } from '../finance/MoneyField';
 import { PurchaseHint } from '../finance/PurchaseHint';
 import { Button } from './Button';
 
@@ -220,7 +229,8 @@ function SheetOverlay({
  * `{ id, field, value, patch: { [field]: qty, [unitKey]: unit } }`.
  * Column type `multi-select`: checkbox list (expense categories). Commit sends
  * `{ id, field, value, patch }` from `col.buildPatch(ids, primaryId)`.
- * Column type `actions`: `info` / `duplicate` / `delete` icon buttons.
+ * Column type `actions`: `info` / `insert-above` / `insert-below` /
+ * `duplicate` / `delete` icon buttons.
  * Expense category editor and title purchase-hint are portaled to
  * document.body so later table rows and the add-row footer cannot paint
  * over them. Last eight rows (and cells with no room below) open upward.
@@ -238,6 +248,8 @@ export function DataSheet({
 	onAdd,
 	onRequestDelete,
 	onRequestDuplicate,
+	onRequestInsertAbove,
+	onRequestInsertBelow,
 	onRequestInfo,
 	onBulkDelete,
 	onSelectionChange,
@@ -706,6 +718,32 @@ export function DataSheet({
 							<Info size={14} />
 						</Button>
 					)}
+					{canMutate && actions.includes('insert-above') && (
+						<Button
+							variant="ghost"
+							size="icon"
+							className="h-7 w-7"
+							onClick={() => onRequestInsertAbove?.(row)}
+							disabled={adding || saving}
+							aria-label={`Insert above ${rowLabel(row)}`}
+							title="Insert above"
+						>
+							<ArrowUpToLine size={14} />
+						</Button>
+					)}
+					{canMutate && actions.includes('insert-below') && (
+						<Button
+							variant="ghost"
+							size="icon"
+							className="h-7 w-7"
+							onClick={() => onRequestInsertBelow?.(row)}
+							disabled={adding || saving}
+							aria-label={`Insert below ${rowLabel(row)}`}
+							title="Insert below"
+						>
+							<ArrowDownToLine size={14} />
+						</Button>
+					)}
 					{canMutate && actions.includes('duplicate') && (
 						<Button
 							variant="ghost"
@@ -906,16 +944,22 @@ export function DataSheet({
 															ref={editorRef}
 															className="border-primary flex h-7 w-full items-stretch border"
 														>
-															<input
-																ref={inputRef}
-																type="number"
-																min={col.min ?? '0'}
-																step={col.step ?? '0.01'}
-																className="bg-surface text-fg min-w-0 flex-1 px-1.5 text-right text-xs tabular-nums focus:outline-none"
+															<InlineMoneyInput
+																id={`sheet-${row.id}-${col.key}`}
+																label={col.label || 'Quantity'}
+																inputRef={inputRef}
 																value={draft}
 																onChange={(e) => setDraft(e.target.value)}
+																onApply={(v) => setDraft(v)}
 																onKeyDown={onKeyDown}
 																onBlur={onBlur}
+																onBeforeOpen={() => {
+																	skipBlurCancel.current = true;
+																}}
+																min={col.min ?? '0'}
+																step={col.step ?? '0.01'}
+																className="min-w-0 flex-1"
+																inputClassName="bg-surface text-fg h-full min-w-0 border-0 pr-1.5 text-right text-xs tabular-nums focus:outline-none"
 																aria-label="Quantity"
 															/>
 															<select
@@ -1034,13 +1078,34 @@ export function DataSheet({
 																</option>
 															))}
 														</select>
+													) : inputType === 'number' ? (
+														<div ref={editorRef} className="h-7 w-full">
+															<InlineMoneyInput
+																id={`sheet-${row.id}-${col.key}`}
+																label={col.label || col.key}
+																inputRef={inputRef}
+																value={draft}
+																onChange={(e) => setDraft(e.target.value)}
+																onApply={(v) => setDraft(v)}
+																onKeyDown={onKeyDown}
+																onBlur={onBlur}
+																onBeforeOpen={() => {
+																	skipBlurCancel.current = true;
+																}}
+																min={col.min ?? '0'}
+																step={col.step ?? '0.01'}
+																className="h-7 w-full"
+																inputClassName={cn(
+																	'border-primary bg-surface text-fg h-7 w-full border pr-1.5 text-xs focus:outline-none',
+																	col.align === 'right' && 'text-right tabular-nums'
+																)}
+															/>
+														</div>
 													) : (
 														<>
 															<input
 																ref={inputRef}
 																type={inputType}
-																min={inputType === 'number' ? (col.min ?? '0') : undefined}
-																step={inputType === 'number' ? (col.step ?? '0.01') : undefined}
 																className={cn(
 																	'border-primary bg-surface text-fg h-7 w-full border px-1.5 text-xs focus:outline-none',
 																	col.align === 'right' && 'text-right tabular-nums'

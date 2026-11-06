@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
-import { Search } from 'lucide-react';
+import { Calculator, Search } from 'lucide-react';
 
 import { transactionsApi } from '../../lib/resources';
+import { useCalculatorStore } from '../../stores/calculatorStore';
 import { useUIStore } from '../../stores/uiStore';
 
 /**
@@ -12,6 +13,7 @@ import { useUIStore } from '../../stores/uiStore';
  */
 function PaletteDialog({ onClose }) {
 	const navigate = useNavigate();
+	const openCalculator = useCalculatorStore((s) => s.openCalculator);
 	const [term, setTerm] = useState('');
 	const [debounced, setDebounced] = useState('');
 
@@ -30,6 +32,14 @@ function PaletteDialog({ onClose }) {
 		onClose();
 		navigate(`/transactions/${item.id}`);
 	};
+
+	const openCalc = () => {
+		onClose();
+		openCalculator();
+	};
+
+	const showActions = debounced.length <= 1;
+	const calcMatch = debounced.length > 1 && 'calculator'.includes(debounced.toLowerCase());
 
 	return (
 		<motion.div
@@ -53,10 +63,21 @@ function PaletteDialog({ onClose }) {
 			</div>
 
 			<div className="max-h-80 overflow-y-auto p-2">
+				{(showActions || calcMatch) && (
+					<button
+						type="button"
+						onClick={openCalc}
+						className="hover:bg-surface-2 flex w-full cursor-pointer items-center gap-3 rounded-md px-3 py-2 text-left text-sm"
+					>
+						<Calculator size={16} className="text-muted" />
+						<span className="text-fg flex-1 truncate">Calculator</span>
+						<span className="text-muted text-xs">⌘=</span>
+					</button>
+				)}
 				{debounced.length <= 1 && (
 					<p className="text-muted p-6 text-center text-sm">Type to search transactions.</p>
 				)}
-				{debounced.length > 1 && !isFetching && results.length === 0 && (
+				{debounced.length > 1 && !isFetching && results.length === 0 && !calcMatch && (
 					<p className="text-muted p-6 text-center text-sm">No results for “{debounced}”.</p>
 				)}
 				{results.map((item) => (

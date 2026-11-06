@@ -8,6 +8,7 @@ import { reassignAndDeleteSource, sourcesApi, useFinanceBalance } from '../../li
 import { toast } from '../../stores/toastStore';
 import { useIsProfileOwner, useProfileStore } from '../../stores/profileStore';
 import { Button, Card, CardBody, CardHeader, Input, Modal, Select } from '../ui';
+import { MoneyField } from './MoneyField';
 
 function errorDetail(err) {
 	const data = err?.response?.data;
@@ -265,9 +266,9 @@ export function WalletSourcesCard() {
 									<option value="ewallet">E-wallet</option>
 									<option value="bank">Bank</option>
 								</Select>
-								<Input
+								<MoneyField
+									id="wallet-source-starting-new"
 									label="Starting"
-									type="number"
 									step="0.01"
 									name="wallet-source-starting"
 									autoComplete="transaction-amount"
@@ -316,9 +317,9 @@ export function WalletSourcesCard() {
 										}}
 									>
 										<div className="min-w-[8rem] flex-1">
-											<Input
+											<MoneyField
+												id={`wallet-starting-${src.id}`}
 												label="Starting"
-												type="number"
 												step="0.01"
 												name={`wallet-starting-${src.id}`}
 												autoComplete="transaction-amount"
