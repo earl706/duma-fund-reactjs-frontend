@@ -9,7 +9,7 @@ import {
 	CAL_GRAINS,
 	dayTotals,
 	groupByDate,
-	latestFive,
+	latestPreview,
 	monthGridDays,
 	rangeTitle,
 	sameDay,
@@ -61,7 +61,7 @@ function DayCell({ day, anchor, txns, compact, aggregateOnly, onOpen }) {
 	const today = sameDay(day, new Date());
 	const totals = dayTotals(txns);
 	const txnCount = txns?.length || 0;
-	const preview = aggregateOnly ? [] : latestFive(txns);
+	const preview = aggregateOnly ? [] : latestPreview(txns);
 	const more = aggregateOnly ? 0 : Math.max(0, txnCount - preview.length);
 	const netLabel = formatNet(totals.net);
 	const countLabel = txnCount > 100 ? '99+' : String(txnCount);

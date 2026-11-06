@@ -6,6 +6,90 @@ const UNIT_OPTIONS = ['pcs', 'kg', 'g', 'L', 'mL'];
 /** Max images / drafts in one Scan receipt session (matches backend). */
 export const MAX_BULK_RECEIPTS = 10;
 
+/** Align with Nginx/Gunicorn OCR budgets (see VPS_DEPLOYMENT_BOILERPLATE). */
+const SCAN_TIMEOUT_MS = 120_000;
+const SCAN_AUTO_RETRY_DELAY_MS = 1500;
+
+function sleep(ms) {
+	return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function appendLlmFields(form) {
+	const llm = getActiveLlmCredentials();
+	if (!llm) return;
+	form.append('llm_provider', llm.provider);
+	form.append('llm_api_key', llm.apiKey);
+	form.append('llm_model', llm.model);
+}
+
+function isTransientScanDetail(detail = '') {
+	const text = String(detail).toLowerCase();
+	return (
+		text.includes('temporarily unavailable') ||
+		text.includes('503') ||
+		text.includes('429') ||
+		text.includes('could not parse') ||
+		text.includes('timed out') ||
+		text.includes('timeout') ||
+		text.includes('rate limit') ||
+		text.includes('overloaded') ||
+		text.includes('try again') ||
+		text.includes('retry shortly')
+	);
+}
+
+function shouldAutoRetryScanData(data) {
+	const results = data?.results;
+	if (!Array.isArray(results) || !results.length) return false;
+	return results.every((row) => !row?.ok && isTransientScanDetail(row?.detail));
+}
+
+function isTransientAxiosError(err) {
+	if (!err) return false;
+	if (!err.response) {
+		const code = err.code || '';
+		const message = String(err.message || '').toLowerCase();
+		return (
+			code === 'ECONNABORTED' ||
+			code === 'ERR_NETWORK' ||
+			message.includes('timeout') ||
+			message.includes('network')
+		);
+	}
+	const status = err.response.status;
+	if (status === 408 || status === 429 || status === 502 || status === 503 || status === 504) {
+		return true;
+	}
+	const detail = err.response?.data?.detail;
+	return typeof detail === 'string' && isTransientScanDetail(detail);
+}
+
+/**
+ * Multipart OCR post: omit Content-Type so the browser sets boundary;
+ * one automatic retry for cold-start / gateway flakiness.
+ */
+async function postReceiptScan(url, buildForm) {
+	const config = { timeout: SCAN_TIMEOUT_MS };
+	const attempt = async () => {
+		const form = buildForm();
+		const { data } = await api.post(url, form, config);
+		return data;
+	};
+
+	try {
+		const data = await attempt();
+		if (shouldAutoRetryScanData(data)) {
+			await sleep(SCAN_AUTO_RETRY_DELAY_MS);
+			return attempt();
+		}
+		return data;
+	} catch (err) {
+		if (!isTransientAxiosError(err)) throw err;
+		await sleep(SCAN_AUTO_RETRY_DELAY_MS);
+		return attempt();
+	}
+}
+
 export const BANK_TXN_TYPES = [
 	{ value: 'income', label: 'Income' },
 	{ value: 'transfer_in', label: 'Transfer in' },
@@ -22,18 +106,12 @@ export function mediaUrl(path) {
 
 /** Standalone scan — does not persist; client keeps the File for commit. */
 export async function scanReceipt(file) {
-	const form = new FormData();
-	form.append('image', file);
-	const llm = getActiveLlmCredentials();
-	if (llm) {
-		form.append('llm_provider', llm.provider);
-		form.append('llm_api_key', llm.apiKey);
-		form.append('llm_model', llm.model);
-	}
-	const { data } = await api.post('/finance/transactions/scan-receipt/', form, {
-		headers: { 'Content-Type': 'multipart/form-data' }
+	return postReceiptScan('/finance/transactions/scan-receipt/', () => {
+		const form = new FormData();
+		form.append('image', file);
+		appendLlmFields(form);
+		return form;
 	});
-	return data;
 }
 
 /**
@@ -47,21 +125,15 @@ export async function bulkScanReceipts(files) {
 	if (files.length > MAX_BULK_RECEIPTS) {
 		throw new Error(`At most ${MAX_BULK_RECEIPTS} images per batch.`);
 	}
-	const form = new FormData();
-	form.append('count', String(files.length));
-	files.forEach((file, index) => {
-		form.append(`image_${index}`, file);
+	return postReceiptScan('/finance/transactions/bulk-scan-receipts/', () => {
+		const form = new FormData();
+		form.append('count', String(files.length));
+		files.forEach((file, index) => {
+			form.append(`image_${index}`, file);
+		});
+		appendLlmFields(form);
+		return form;
 	});
-	const llm = getActiveLlmCredentials();
-	if (llm) {
-		form.append('llm_provider', llm.provider);
-		form.append('llm_api_key', llm.apiKey);
-		form.append('llm_model', llm.model);
-	}
-	const { data } = await api.post('/finance/transactions/bulk-scan-receipts/', form, {
-		headers: { 'Content-Type': 'multipart/form-data' }
-	});
-	return data;
 }
 
 function appendReceiptFields(
@@ -130,9 +202,8 @@ export async function commitReceipt({
 		items,
 		entries
 	});
-	const { data } = await api.post('/finance/transactions/commit-receipt/', form, {
-		headers: { 'Content-Type': 'multipart/form-data' }
-	});
+	// Let the browser set multipart boundary (do not force Content-Type).
+	const { data } = await api.post('/finance/transactions/commit-receipt/', form);
 	return data;
 }
 
@@ -187,9 +258,7 @@ export async function commitReceiptsBulk(receipts) {
 		if (r.file) form.append(`image_${index}`, r.file);
 	});
 
-	const { data } = await api.post('/finance/transactions/bulk-commit-receipts/', form, {
-		headers: { 'Content-Type': 'multipart/form-data' }
-	});
+	const { data } = await api.post('/finance/transactions/bulk-commit-receipts/', form);
 	return data;
 }
 

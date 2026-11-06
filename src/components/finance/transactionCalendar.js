@@ -121,9 +121,9 @@ export function dayTotals(txns) {
 	return { moneyIn, moneyOut, net: moneyIn - moneyOut };
 }
 
-/** Up to five newest transactions for a day cell. */
-export function latestFive(txns) {
-	return (txns || []).slice(0, 5);
+/** Up to `limit` newest transactions for a day cell (default 3). */
+export function latestPreview(txns, limit = 3) {
+	return (txns || []).slice(0, limit);
 }
 
 /**

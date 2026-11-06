@@ -102,11 +102,48 @@ export function clamp(n, min, max) {
 	return Math.max(min, Math.min(max, n));
 }
 
-/** Format a money amount with two decimal places. */
+/**
+ * Short money label: k / M / B with '.' decimal, 1 place only when needed.
+ * e.g. 14700 → 14.7k, 15000 → 15k, 157000000 → 157M
+ */
+function formatCostCompactAbs(abs) {
+	const tiers = [
+		{ min: 1e9, div: 1e9, suffix: 'B' },
+		{ min: 1e6, div: 1e6, suffix: 'M' },
+		{ min: 1e3, div: 1e3, suffix: 'k' }
+	];
+	for (let i = 0; i < tiers.length; i++) {
+		const tier = tiers[i];
+		if (abs < tier.min) continue;
+		let scaled = abs / tier.div;
+		let rounded = Math.round(scaled * 10) / 10;
+		// 999.95k → 1000k → bump to next unit
+		if (rounded >= 1000 && i > 0) {
+			const next = tiers[i - 1];
+			scaled = abs / next.div;
+			rounded = Math.round(scaled * 10) / 10;
+			if (Number.isInteger(rounded)) return `${rounded}${next.suffix}`;
+			return `${rounded.toFixed(1)}${next.suffix}`;
+		}
+		if (Number.isInteger(rounded)) return `${rounded}${tier.suffix}`;
+		return `${rounded.toFixed(1)}${tier.suffix}`;
+	}
+	return null;
+}
+
+/**
+ * Format a money amount. Values with |n| ≥ 10000 use short form (14.7k / 157M);
+ * smaller amounts keep locale two-decimal style. Sign preserved for negatives.
+ */
 export function formatCost(value) {
 	if (value == null || value === '') return '—';
 	const n = Number(value);
 	if (Number.isNaN(n)) return '—';
+	const abs = Math.abs(n);
+	if (abs >= 10000) {
+		const body = formatCostCompactAbs(abs);
+		if (body) return n < 0 ? `-${body}` : body;
+	}
 	return n.toLocaleString(undefined, {
 		minimumFractionDigits: 2,
 		maximumFractionDigits: 2
