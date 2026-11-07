@@ -83,16 +83,23 @@ function columnSortKey(col) {
 
 function parseOrdering(ordering) {
 	if (!ordering) return { key: '', dir: null };
-	if (String(ordering).startsWith('-')) return { key: ordering.slice(1), dir: 'desc' };
-	return { key: ordering, dir: 'asc' };
+	// Multi-field defaults (e.g. -date_effective,-created_at): indicator uses the primary key.
+	const primary = String(ordering).split(',')[0].trim();
+	if (primary.startsWith('-')) return { key: primary.slice(1), dir: 'desc' };
+	return { key: primary, dir: 'asc' };
 }
 
 /** none/other → asc → desc → defaultOrdering (default-desc columns flip to asc first). */
 function nextOrdering(current, sortKey, defaultOrdering = '') {
 	const asc = sortKey;
 	const desc = `-${sortKey}`;
-	if (current === asc) return desc;
-	if (current === desc) return current === defaultOrdering ? asc : defaultOrdering;
+	const primary = String(current || '')
+		.split(',')[0]
+		.trim();
+	if (primary === asc) return desc;
+	if (primary === desc) {
+		return current === defaultOrdering || primary === defaultOrdering ? asc : defaultOrdering;
+	}
 	return asc;
 }
 
@@ -221,9 +228,12 @@ function SheetOverlay({
  * Spreadsheet-style data table.
  * Click a cell to select it; Shift+click extends the selection. Drag the fill
  * handle (bottom-right dot) vertically to copy the anchor cell's value down/up
- * the same column. Double-click to edit a single cell; Enter commits; Escape
- * cancels. Row checkboxes (optional) support bulk delete and, when rows have
- * amount + type, a signed cash-flow net of the selection.
+ * the same column. Double-click to edit a single cell; Enter or blur commits;
+ * Escape discards the draft and clears cell selection. Escape or pointer-down
+ * outside the sheet clears a non-editing cell selection. Clicking another cell
+ * while editing commits, then selects the new cell. Row checkboxes (optional)
+ * support bulk delete and, when rows have amount + type, a signed cash-flow
+ * net of the selection.
  *
  * Column type `qty-unit`: number + unit select in one cell. Commit sends
  * `{ id, field, value, patch: { [field]: qty, [unitKey]: unit } }`.
@@ -240,6 +250,8 @@ function SheetOverlay({
  * `col.sortKey` overrides the API ordering field.
  * `onSelectionChange(ids)` reports checked row ids whenever selection changes.
  * `pendingCells` maps row id → column keys currently saving (spinner + muted cell).
+ * `col.cornerBadge(row)` renders a non-layout absolute node (e.g. top-right icon)
+ * inside the cell; the cell becomes `relative` and skips td-level truncate.
  */
 export function DataSheet({
 	rows,
@@ -275,14 +287,17 @@ export function DataSheet({
 	const [cellAnchor, setCellAnchor] = useState(null);
 	const [cellFocus, setCellFocus] = useState(null);
 	const [fillPreviewEnd, setFillPreviewEnd] = useState(null);
+	const sheetRootRef = useRef(null);
 	const [isFillDragging, setIsFillDragging] = useState(false);
 	const [overlayAnchor, setOverlayAnchor] = useState(null);
 	const inputRef = useRef(null);
 	const editorRef = useRef(null);
 	const tableRef = useRef(null);
-	const skipBlurCancel = useRef(false);
+	const skipBlurAction = useRef(false);
+	const editRef = useRef(null);
 	const autoEditKey = useRef(null);
 	const fillDragging = useRef(false);
+	editRef.current = edit;
 
 	const canMutate = !readOnly;
 	const sheetSelectable = selectable && canMutate;
@@ -364,16 +379,10 @@ export function DataSheet({
 		return ri >= fillPreview.minRow && ri <= fillPreview.maxRow;
 	};
 
-	const handleCellSelect = (e, row, col) => {
-		if (!isFillableCell(col)) return;
-		if (fillDragging.current) return;
-		const point = { rowId: row.id, colKey: col.key };
-		if (e.shiftKey && cellAnchor) {
-			setCellFocus(point);
-		} else {
-			setCellAnchor(point);
-			setCellFocus(point);
-		}
+	const clearCellSelection = () => {
+		setCellAnchor(null);
+		setCellFocus(null);
+		setFillPreviewEnd(null);
 	};
 
 	const rowIdAtClientY = useCallback((clientY) => {
@@ -483,6 +492,11 @@ export function DataSheet({
 		setEdit(null);
 		setDraft('');
 		setDraftUnit('');
+	};
+
+	const discardEdit = () => {
+		cancelEdit();
+		clearCellSelection();
 	};
 
 	const commitForRow = (targetRow, field, nextValue, nextUnit, col) => {
@@ -652,26 +666,79 @@ export function DataSheet({
 		cancelEdit();
 	};
 
+	const handleCellSelect = (e, row, col) => {
+		if (fillDragging.current) return;
+		if (edit) {
+			// Commit before moving selection; suppress blur so we don't double-commit.
+			skipBlurAction.current = true;
+			commitEdit();
+		}
+		if (!isFillableCell(col)) return;
+		const point = { rowId: row.id, colKey: col.key };
+		if (e.shiftKey && cellAnchor) {
+			setCellFocus(point);
+		} else {
+			setCellAnchor(point);
+			setCellFocus(point);
+		}
+	};
+
 	const onKeyDown = (e) => {
 		if (e.key === 'Enter') {
 			e.preventDefault();
-			skipBlurCancel.current = true;
+			skipBlurAction.current = true;
 			commitEdit();
 		} else if (e.key === 'Escape') {
 			e.preventDefault();
-			skipBlurCancel.current = true;
-			cancelEdit();
+			e.stopPropagation();
+			skipBlurAction.current = true;
+			discardEdit();
 		}
 	};
 
 	const onBlur = (e) => {
-		if (skipBlurCancel.current) {
-			skipBlurCancel.current = false;
+		if (skipBlurAction.current) {
+			skipBlurAction.current = false;
 			return;
 		}
 		if (editorRef.current?.contains(e.relatedTarget)) return;
-		cancelEdit();
+		commitEdit();
 	};
+
+	useEffect(() => {
+		const onWindowKeyDown = (e) => {
+			if (e.key !== 'Escape') return;
+			if (editRef.current) {
+				// Overlay editors (categories) may not route Escape through onKeyDown.
+				e.preventDefault();
+				skipBlurAction.current = true;
+				setEdit(null);
+				setDraft('');
+				setDraftUnit('');
+				setCellAnchor(null);
+				setCellFocus(null);
+				setFillPreviewEnd(null);
+				return;
+			}
+			setCellAnchor(null);
+			setCellFocus(null);
+			setFillPreviewEnd(null);
+		};
+		const onDocPointerDown = (e) => {
+			if (editRef.current) return;
+			const root = sheetRootRef.current;
+			if (!root || root.contains(e.target)) return;
+			setCellAnchor(null);
+			setCellFocus(null);
+			setFillPreviewEnd(null);
+		};
+		window.addEventListener('keydown', onWindowKeyDown);
+		document.addEventListener('pointerdown', onDocPointerDown, true);
+		return () => {
+			window.removeEventListener('keydown', onWindowKeyDown);
+			document.removeEventListener('pointerdown', onDocPointerDown, true);
+		};
+	}, []);
 
 	const isEditing = (rowId, field) => edit?.id === rowId && edit?.field === field;
 
@@ -776,7 +843,7 @@ export function DataSheet({
 		fillHandleCell && fillHandleCell.rowId === rows[cellSelection?.maxRow ?? -1]?.id && !edit;
 
 	return (
-		<div className="border-line bg-surface overflow-hidden rounded-md border">
+		<div ref={sheetRootRef} className="border-line bg-surface overflow-hidden rounded-md border">
 			{sheetSelectable && selectedIds.size > 0 && (
 				<div className="border-line bg-surface-2 flex flex-wrap items-center gap-2 border-b px-2 py-1.5">
 					<span className={cn('text-muted', cellText)}>{selectedIds.size} selected</span>
@@ -954,7 +1021,7 @@ export function DataSheet({
 																onKeyDown={onKeyDown}
 																onBlur={onBlur}
 																onBeforeOpen={() => {
-																	skipBlurCancel.current = true;
+																	skipBlurAction.current = true;
 																}}
 																min={col.min ?? '0'}
 																step={col.step ?? '0.01'}
@@ -966,7 +1033,7 @@ export function DataSheet({
 																className="border-line bg-surface-2 text-fg w-14 shrink-0 border-l px-0.5 text-[10px] focus:outline-none"
 																value={draftUnit}
 																onChange={(e) => {
-																	skipBlurCancel.current = true;
+																	skipBlurAction.current = true;
 																	commitEdit(draft, e.target.value);
 																}}
 																onKeyDown={onKeyDown}
@@ -1005,7 +1072,7 @@ export function DataSheet({
 																overlayRef={editorRef}
 																preferAbove={preferAbove}
 																onMouseDown={() => {
-																	skipBlurCancel.current = true;
+																	skipBlurAction.current = true;
 																}}
 															>
 																<CategoryMultiSelect
@@ -1036,7 +1103,7 @@ export function DataSheet({
 																		size="sm"
 																		className="h-6 text-[10px]"
 																		onClick={() => {
-																			skipBlurCancel.current = true;
+																			skipBlurAction.current = true;
 																			cancelEdit();
 																		}}
 																	>
@@ -1046,7 +1113,7 @@ export function DataSheet({
 																		size="sm"
 																		className="h-6 text-[10px]"
 																		onClick={() => {
-																			skipBlurCancel.current = true;
+																			skipBlurAction.current = true;
 																			commitEdit();
 																		}}
 																	>
@@ -1063,7 +1130,7 @@ export function DataSheet({
 															className="border-primary bg-surface text-fg h-7 w-full border px-1.5 text-xs focus:outline-none"
 															value={draft}
 															onChange={(e) => {
-																skipBlurCancel.current = true;
+																skipBlurAction.current = true;
 																commitEdit(e.target.value);
 															}}
 															onKeyDown={onKeyDown}
@@ -1090,7 +1157,7 @@ export function DataSheet({
 																onKeyDown={onKeyDown}
 																onBlur={onBlur}
 																onBeforeOpen={() => {
-																	skipBlurCancel.current = true;
+																	skipBlurAction.current = true;
 																}}
 																min={col.min ?? '0'}
 																step={col.step ?? '0.01'}
@@ -1123,13 +1190,13 @@ export function DataSheet({
 																	preferAbove={preferAbove}
 																	minWidth={288}
 																	onMouseDown={() => {
-																		skipBlurCancel.current = true;
+																		skipBlurAction.current = true;
 																	}}
 																>
 																	<PurchaseHint
 																		query={draft}
 																		onInteractStart={() => {
-																			skipBlurCancel.current = true;
+																			skipBlurAction.current = true;
 																		}}
 																		className="mt-0 w-full max-w-none"
 																	/>
@@ -1149,6 +1216,7 @@ export function DataSheet({
 											showFillHandle &&
 											fillHandleCell?.rowId === row.id &&
 											fillHandleCell?.colKey === col.key;
+										const cornerBadge = col.cornerBadge?.(row) ?? null;
 										const titleText = cellPending
 											? 'Saving…'
 											: isFillableCell(col)
@@ -1162,8 +1230,9 @@ export function DataSheet({
 												key={col.key}
 												aria-busy={cellPending || undefined}
 												className={cn(
-													'text-fg truncate transition-opacity duration-200 select-none',
-													(hasFillHandle || cellPending) && 'relative',
+													'text-fg transition-opacity duration-200 select-none',
+													!cornerBadge && 'truncate',
+													(hasFillHandle || cellPending || cornerBadge) && 'relative',
 													cellPad,
 													col.align === 'right' && 'text-right tabular-nums',
 													isFillableCell(col) && !cellPending && 'hover:bg-primary/5 cursor-cell',
@@ -1193,6 +1262,7 @@ export function DataSheet({
 													{cellPending && <Spinner size={12} alt="" />}
 													<span className="min-w-0 truncate">{shown}</span>
 												</span>
+												{cornerBadge}
 												{hasFillHandle && !cellPending && (
 													<span
 														role="button"

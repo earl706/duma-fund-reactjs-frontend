@@ -1,7 +1,23 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, ArrowLeftRight, ImageDown, Plus, ScanLine, Star } from 'lucide-react';
+import {
+	ArrowLeft,
+	ArrowLeftRight,
+	Car,
+	Clapperboard,
+	HeartPulse,
+	Home,
+	ImageDown,
+	MoreHorizontal,
+	Plus,
+	ScanLine,
+	ShoppingBag,
+	Star,
+	Tag,
+	UtensilsCrossed,
+	Zap
+} from 'lucide-react';
 
 import { sourceSelectOptions } from '../lib/balanceSources';
 import { categoriesApi, sourcesApi, transactionItemsApi, transactionsApi } from '../lib/resources';
@@ -32,6 +48,7 @@ import {
 	Button,
 	DataSheet,
 	EmptyState,
+	IconChoice,
 	ListToolbar,
 	FadeIn,
 	LoadingScreen,
@@ -61,6 +78,23 @@ const UNIT_OPTIONS = [
 	{ value: 'L', label: 'L' },
 	{ value: 'mL', label: 'mL' }
 ];
+
+/** Icons for system expense seeds (exact name). Custom / renamed → Tag. */
+const EXPENSE_SEED_ICONS = {
+	Food: UtensilsCrossed,
+	Transport: Car,
+	Housing: Home,
+	Utilities: Zap,
+	Health: HeartPulse,
+	Entertainment: Clapperboard,
+	Shopping: ShoppingBag,
+	Other: MoreHorizontal
+};
+
+function categoryChoiceIcon(category) {
+	if (!category?.is_system) return Tag;
+	return EXPENSE_SEED_ICONS[category.name] || Tag;
+}
 
 function todayISO() {
 	const d = new Date();
@@ -107,7 +141,12 @@ export default function TransactionDetailPage() {
 		expenseCategories[0]?.id;
 
 	const categoryOptions = useMemo(
-		() => expenseCategories.map((c) => ({ value: String(c.id), label: c.name })),
+		() =>
+			expenseCategories.map((c) => ({
+				value: String(c.id),
+				label: c.name,
+				icon: categoryChoiceIcon(c)
+			})),
 		[expenseCategories]
 	);
 
@@ -440,66 +479,66 @@ export default function TransactionDetailPage() {
 					}
 				/>
 
-				{sourceOptions.length > 0 && (
-					<div className="border-line bg-surface mb-4 max-w-xs rounded-md border px-3 py-2">
-						<Select
-							label="Source"
-							value={txn.source != null ? String(txn.source) : ''}
-							disabled={!canEdit || updateTxn.isPending}
-							onChange={(e) => {
-								const next = Number(e.target.value);
-								if (!next || next === txn.source) return;
-								updateTxn.mutate({ id: txn.id, source: next });
-							}}
-						>
-							{sourceOptions.map((s) => (
-								<option key={s.id} value={s.id}>
-									{s.name}
-									{s.status === 'archived' ? ' (archived)' : ''}
-								</option>
-							))}
-						</Select>
+				{(sourceOptions.length > 0 || txn.receipt_image) && (
+					<div className="mb-4 flex flex-wrap items-stretch gap-3">
+						{txn.receipt_image && (
+							<button
+								type="button"
+								onClick={() => setReceiptOpen(true)}
+								className={cn(
+									'border-line bg-surface flex min-h-[6.5rem] w-fit shrink-0 flex-col items-center justify-center gap-1.5 rounded-md border p-2',
+									'hover:border-primary/40 hover:bg-primary/5 cursor-pointer transition-colors',
+									'focus-visible:outline-primary focus-visible:outline-2 focus-visible:outline-offset-2'
+								)}
+								aria-label="View receipt image"
+							>
+								<img
+									src={mediaUrl(txn.receipt_image)}
+									alt=""
+									className="border-line h-16 w-16 rounded-md border object-cover"
+								/>
+							</button>
+						)}
+						{sourceOptions.length > 0 && (
+							<div className="border-line bg-surface flex min-h-[6.5rem] max-w-xs min-w-[12rem] flex-1 flex-col justify-center rounded-md border px-3 py-2">
+								<Select
+									label="Source"
+									value={txn.source != null ? String(txn.source) : ''}
+									disabled={!canEdit || updateTxn.isPending}
+									onChange={(e) => {
+										const next = Number(e.target.value);
+										if (!next || next === txn.source) return;
+										updateTxn.mutate({ id: txn.id, source: next });
+									}}
+								>
+									{sourceOptions.map((s) => (
+										<option key={s.id} value={s.id}>
+											{s.name}
+											{s.status === 'archived' ? ' (archived)' : ''}
+										</option>
+									))}
+								</Select>
+							</div>
+						)}
 					</div>
-				)}
-
-				{txn.receipt_image && (
-					<p className="mb-3">
-						<button
-							type="button"
-							onClick={() => setReceiptOpen(true)}
-							className="text-primary cursor-pointer text-sm hover:underline"
-						>
-							View receipt image
-						</button>
-					</p>
 				)}
 
 				{isExpense && (
 					<div className="border-line bg-surface mb-4 rounded-md border px-3 py-2">
-						<div
-							className={cn(
-								'flex flex-col gap-2',
-								editingCategories
-									? 'sm:grid sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:items-start sm:gap-3'
-									: 'sm:grid sm:grid-cols-[auto_minmax(0,1fr)] sm:items-start sm:gap-3'
-							)}
-						>
-							<div className="sm:pt-0.5">
+						<div className="flex flex-col gap-2">
+							<div>
 								<span className="text-fg text-sm font-medium">Categories</span>
-								<p className="text-muted text-[10px] leading-tight">
-									{displayCategoryIds.length}/{MAX_EXPENSE_CATEGORIES} · star = primary
-								</p>
 							</div>
 							<div
 								className={cn(
-									'grid grid-cols-2 gap-1 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6',
+									'grid grid-cols-8 gap-1.5',
 									(!canEdit || updateTxn.isPending) && 'pointer-events-none opacity-60'
 								)}
 								role="group"
 								aria-label="Expense categories"
 							>
 								{categoryOptions.length === 0 ? (
-									<p className="text-muted col-span-full px-0.5 py-1 text-xs">
+									<p className="text-muted col-span-8 px-0.5 py-1 text-xs">
 										No expense categories.
 									</p>
 								) : (
@@ -509,42 +548,45 @@ export default function TransactionDetailPage() {
 										const isPrimary = checked && Number(displayPrimary) === id;
 										const atCap = !checked && displayCategoryIds.length >= MAX_EXPENSE_CATEGORIES;
 										return (
-											<label
+											<div
 												key={opt.value}
 												className={cn(
-													'flex cursor-pointer items-center gap-1.5 rounded-sm border px-1.5 py-1 text-xs',
-													checked
-														? 'border-primary bg-primary/12 text-primary'
-														: 'border-line text-muted',
-													atCap && 'opacity-40'
+													'relative flex min-w-0 flex-col items-center',
+													checked && 'bg-primary/8 rounded-md'
 												)}
 											>
-												<input
-													type="checkbox"
-													className="accent-primary"
-													checked={checked}
+												<IconChoice
+													icon={opt.icon || Tag}
+													label={opt.label}
+													selected={checked}
 													disabled={!canEdit || updateTxn.isPending || atCap}
-													onChange={() => toggleHeaderCategory(id)}
+													onClick={() => toggleHeaderCategory(id)}
+													ariaLabel={
+														checked
+															? `Deselect category ${opt.label}`
+															: `Select category ${opt.label}`
+													}
 												/>
-												<span className="text-fg min-w-0 flex-1 truncate">{opt.label}</span>
 												{checked && (
 													<button
 														type="button"
 														className={cn(
-															'text-muted hover:text-primary -mr-0.5 shrink-0 rounded p-0.5',
+															'absolute top-0.5 right-0.5 cursor-pointer rounded p-0.5',
+															'text-muted hover:text-primary',
+															'focus-visible:outline-primary focus-visible:outline-2 focus-visible:outline-offset-1',
 															isPrimary && 'text-primary'
 														)}
 														title={isPrimary ? 'Primary category' : 'Set as primary'}
-														aria-label={isPrimary ? 'Primary category' : 'Set as primary'}
-														onClick={(e) => {
-															e.preventDefault();
-															setHeaderPrimary(id);
-														}}
+														aria-label={
+															isPrimary ? 'Primary category' : `Set ${opt.label} as primary`
+														}
+														disabled={!canEdit || updateTxn.isPending}
+														onClick={() => setHeaderPrimary(id)}
 													>
-														<Star size={12} fill={isPrimary ? 'currentColor' : 'none'} />
+														<Star size={11} fill={isPrimary ? 'currentColor' : 'none'} />
 													</button>
 												)}
-											</label>
+											</div>
 										);
 									})
 								)}

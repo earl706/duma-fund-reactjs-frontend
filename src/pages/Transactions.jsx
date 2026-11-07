@@ -67,7 +67,7 @@ const TYPE_OPTIONS = [
 	{ value: 'transfer_out', label: 'Transfer out' }
 ];
 
-const DEFAULT_ORDERING = '-date_effective';
+const DEFAULT_ORDERING = '-date_effective,-created_at';
 
 /** Display-only signed amount: + inflows, − outflows (unicode minus). */
 function formatSignedAmount(amount, type) {
@@ -90,11 +90,6 @@ function SignedAmount({ amount, type, className }) {
 		</span>
 	);
 }
-
-const STATUS_SELECT = [
-	{ value: 'active', label: 'Active' },
-	{ value: 'archived', label: 'Archived' }
-];
 
 function todayISO() {
 	const d = new Date();
@@ -773,7 +768,19 @@ export default function TransactionsPage() {
 				editable: true,
 				type: 'select',
 				options: TYPE_OPTIONS,
-				className: 'w-[11%]'
+				className: 'w-[11%]',
+				getDisplay: (row) =>
+					TYPE_OPTIONS.find((o) => o.value === row.type)?.label || row.type || '—',
+				cornerBadge: (row) =>
+					row.receipt_image ? (
+						<span
+							className="bg-primary/12 text-primary pointer-events-none absolute top-2 right-2 z-[1] inline-flex h-3.5 w-3.5 items-center justify-center rounded-sm"
+							title="Scanned receipt"
+							aria-label="Scanned receipt"
+						>
+							<ScanLine size={9} strokeWidth={2.5} aria-hidden />
+						</span>
+					) : null
 			},
 			{
 				key: 'source',
@@ -841,14 +848,6 @@ export default function TransactionsPage() {
 					category: primaryId,
 					categories: ids
 				})
-			},
-			{
-				key: 'status',
-				label: '',
-				editable: true,
-				type: 'status-icon',
-				options: STATUS_SELECT,
-				className: 'w-8'
 			},
 			{
 				key: 'date_effective',
