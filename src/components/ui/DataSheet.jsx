@@ -240,7 +240,8 @@ function SheetOverlay({
  * Column type `multi-select`: checkbox list (expense categories). Commit sends
  * `{ id, field, value, patch }` from `col.buildPatch(ids, primaryId)`.
  * Column type `actions`: `info` / `insert-above` / `insert-below` /
- * `duplicate` / `delete` icon buttons.
+ * `duplicate` / `delete` icon buttons. Optional `col.leading(row)` renders
+ * before those buttons (e.g. author initials on shared profiles).
  * Expense category editor and title purchase-hint are portaled to
  * document.body so later table rows and the add-row footer cannot paint
  * over them. Last eight rows (and cells with no room below) open upward.
@@ -771,9 +772,11 @@ export function DataSheet({
 
 	const renderActions = (row, col) => {
 		const actions = col.actions || (col.type === 'action-delete' ? ['delete'] : []);
+		const leading = typeof col.leading === 'function' ? col.leading(row) : col.leading;
 		return (
 			<td key={col.key} className={cn('px-0.5 py-0.5', col.className)}>
-				<div className="flex items-center justify-center gap-0">
+				<div className="flex items-center justify-center gap-0.5">
+					{leading}
 					{actions.includes('info') && (
 						<Button
 							variant="ghost"

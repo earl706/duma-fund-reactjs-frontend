@@ -24,6 +24,7 @@ import { toast } from '../stores/toastStore';
 import { useActiveProfileId, useCanEditLedger, useProfileStore } from '../stores/profileStore';
 import { useListControls } from '../hooks/useListControls';
 import { AccountsInformationModal } from '../components/finance/AccountsInformationModal';
+import { AuthorChip } from '../components/finance/AuthorChip';
 import { ReceiptImportModal } from '../components/finance/ReceiptImportModal';
 import { MobileTransactionsView } from '../components/finance/MobileTransactionsView';
 import { MobileTransactionEditModal } from '../components/finance/MobileTransactionEditModal';
@@ -112,6 +113,10 @@ export default function TransactionsPage() {
 	const { data: balance } = useFinanceBalance();
 	const canEdit = useCanEditLedger();
 	const profileId = useActiveProfileId();
+	const showAuthors = useProfileStore((s) => {
+		const active = s.profiles.find((p) => p.id === s.activeProfileId);
+		return (active?.member_count ?? 0) > 1;
+	});
 	const { data: categoriesData } = categoriesApi.useList({ page_size: 100, kind: 'expense' });
 	const { data: incomeCats } = categoriesApi.useList({ page_size: 100, kind: 'income' });
 	const { data: sourcesData } = sourcesApi.useList({ page_size: 100 });
@@ -864,10 +869,24 @@ export default function TransactionsPage() {
 				label: '',
 				type: 'actions',
 				actions: ['info', 'insert-above', 'insert-below', 'duplicate', 'delete'],
-				className: 'w-[11.25rem]'
+				className: showAuthors ? 'w-[13rem]' : 'w-[11.25rem]',
+				leading: showAuthors
+					? (row) => (
+							<span className="mr-0.5 inline-flex items-center">
+								<AuthorChip author={row.author} size={22} />
+							</span>
+						)
+					: undefined
 			}
 		],
-		[allCategories, expenseSelectOptions, incomeSelectOptions, sourceSelectOpts, sourcesById]
+		[
+			allCategories,
+			expenseSelectOptions,
+			incomeSelectOptions,
+			showAuthors,
+			sourceSelectOpts,
+			sourcesById
+		]
 	);
 
 	const infoFields = (txn) => {
@@ -916,7 +935,17 @@ export default function TransactionsPage() {
 				)
 			},
 			{ label: 'ID', value: txn.id },
-			{ label: 'UUID', value: txn.uuid }
+			{ label: 'UUID', value: txn.uuid },
+			...(showAuthors
+				? [
+						{
+							label: 'Author',
+							value: txn.author
+								? (txn.author.full_name || '').trim() || txn.author.email || '—'
+								: '—'
+						}
+					]
+				: [])
 		];
 	};
 

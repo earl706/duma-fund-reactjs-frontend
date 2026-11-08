@@ -1,13 +1,42 @@
 import { create } from 'zustand';
 
-/** Ephemeral UI state: sidebar, command palette, and receipt scan modal. */
+const COLLAPSE_KEY = 'dumafund-sidebar-collapsed';
+
+function readCollapsed() {
+	try {
+		return localStorage.getItem(COLLAPSE_KEY) === '1';
+	} catch {
+		return false;
+	}
+}
+
+function writeCollapsed(collapsed) {
+	try {
+		localStorage.setItem(COLLAPSE_KEY, collapsed ? '1' : '0');
+	} catch {
+		/* ignore quota / private mode */
+	}
+}
+
+/** Ephemeral UI state: sidebar (mobile + desktop collapse), palette, receipt scan. */
 export const useUIStore = create((set) => ({
 	sidebarOpen: false,
+	sidebarCollapsed: typeof window !== 'undefined' ? readCollapsed() : false,
 	paletteOpen: false,
 	scanOpen: false,
 
 	toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
 	closeSidebar: () => set({ sidebarOpen: false }),
+	toggleSidebarCollapsed: () =>
+		set((s) => {
+			const sidebarCollapsed = !s.sidebarCollapsed;
+			writeCollapsed(sidebarCollapsed);
+			return { sidebarCollapsed };
+		}),
+	setSidebarCollapsed: (sidebarCollapsed) => {
+		writeCollapsed(sidebarCollapsed);
+		set({ sidebarCollapsed });
+	},
 	openPalette: () => set({ paletteOpen: true }),
 	closePalette: () => set({ paletteOpen: false }),
 	togglePalette: () => set((s) => ({ paletteOpen: !s.paletteOpen })),

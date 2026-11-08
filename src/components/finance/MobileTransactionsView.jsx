@@ -11,8 +11,10 @@ import {
 } from 'lucide-react';
 
 import { cn, formatCost, formatDate, hasUpcomingBalance } from '../../lib/format';
+import { useProfileStore } from '../../stores/profileStore';
 import { StickyPageChrome } from '../layout/StickyPageChrome';
 import { Button, EmptyState, LoadingSwap, Modal } from '../ui';
+import { AuthorChip } from './AuthorChip';
 import { TypeGlyph, amountToneClass, formatSignedAmount } from './txnDisplay';
 
 const TYPE_FILTER = [
@@ -136,6 +138,10 @@ export function MobileTransactionsView({
 	calendar = null
 }) {
 	const [filterOpen, setFilterOpen] = useState(false);
+	const showAuthors = useProfileStore((s) => {
+		const active = s.profiles.find((p) => p.id === s.activeProfileId);
+		return (active?.member_count ?? 0) > 1;
+	});
 	const typeValue = filters.type || '';
 	const statusValue = filters.status ?? '';
 	const horizonValue = filters.horizon || '';
@@ -268,6 +274,7 @@ export function MobileTransactionsView({
 													{row.status === 'archived' ? ' · Archived' : ''}
 												</p>
 											</div>
+											{showAuthors && <AuthorChip author={row.author} size={28} />}
 											<span
 												className={cn(
 													'shrink-0 text-[15px] font-semibold tabular-nums',

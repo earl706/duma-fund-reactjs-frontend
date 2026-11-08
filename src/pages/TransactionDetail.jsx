@@ -43,6 +43,7 @@ import { GroceryExportModal } from '../components/costs/GroceryExportModal';
 import { ReceiptImportModal } from '../components/finance/ReceiptImportModal';
 import { MAX_EXPENSE_CATEGORIES } from '../components/finance/CategoryMultiSelect';
 import { PageHeader } from '../components/layout/PageHeader';
+import { StickyPageChrome } from '../components/layout/StickyPageChrome';
 import {
 	Badge,
 	Button,
@@ -436,48 +437,51 @@ export default function TransactionDetailPage() {
 	return (
 		<FadeIn>
 			<div>
-				<Link
-					to="/transactions"
-					className="text-muted hover:text-fg mb-3 inline-flex items-center gap-1 text-sm"
-				>
-					<ArrowLeft size={14} /> Transactions
-				</Link>
+				<StickyPageChrome>
+					<Link
+						to="/transactions"
+						className="text-muted hover:text-fg inline-flex items-center gap-1 text-sm"
+					>
+						<ArrowLeft size={14} /> Transactions
+					</Link>
 
-				<PageHeader
-					title={txn.title || 'Untitled'}
-					icon={ArrowLeftRight}
-					description={`${txn.type} · ${formatCost(txn.amount)}${
-						txn.date_effective ? ` · ${formatDate(txn.date_effective)}` : ''
-					}${
-						sources.find((s) => s.id === txn.source)
-							? ` · ${sources.find((s) => s.id === txn.source).name}`
-							: ''
-					}`}
-					actions={
-						isExpense ? (
-							<div className="flex flex-wrap gap-2">
-								{canEdit && !mobile && (
-									<Button variant="secondary" onClick={() => setScanOpen(true)}>
-										<ScanLine size={16} /> Scan receipt
+					<PageHeader
+						title={txn.title || 'Untitled'}
+						icon={ArrowLeftRight}
+						description={`${txn.type} · ${formatCost(txn.amount)}${
+							txn.date_effective ? ` · ${formatDate(txn.date_effective)}` : ''
+						}${
+							sources.find((s) => s.id === txn.source)
+								? ` · ${sources.find((s) => s.id === txn.source).name}`
+								: ''
+						}`}
+						className="mb-0"
+						actions={
+							isExpense ? (
+								<div className="flex flex-wrap gap-2">
+									{canEdit && !mobile && (
+										<Button variant="secondary" onClick={() => setScanOpen(true)}>
+											<ScanLine size={16} /> Scan receipt
+										</Button>
+									)}
+									<Button
+										variant="secondary"
+										onClick={openExport}
+										loading={exporting}
+										disabled={!hasItems}
+									>
+										<ImageDown size={16} /> Export image
 									</Button>
-								)}
-								<Button
-									variant="secondary"
-									onClick={openExport}
-									loading={exporting}
-									disabled={!hasItems}
-								>
-									<ImageDown size={16} /> Export image
-								</Button>
-								{canEdit && (
-									<Button onClick={addItem} loading={createItem.isPending}>
-										<Plus size={16} /> Add item
-									</Button>
-								)}
-							</div>
-						) : null
-					}
-				/>
+									{canEdit && (
+										<Button onClick={addItem} loading={createItem.isPending}>
+											<Plus size={16} /> Add item
+										</Button>
+									)}
+								</div>
+							) : null
+						}
+					/>
+				</StickyPageChrome>
 
 				{(sourceOptions.length > 0 || txn.receipt_image) && (
 					<div className="mb-4 flex flex-wrap items-stretch gap-3">
