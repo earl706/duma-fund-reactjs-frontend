@@ -27,6 +27,11 @@ const STATUS_DOT = {
 function cashFlowDelta(row) {
 	const amount = Number(row?.amount);
 	if (!Number.isFinite(amount)) return null;
+	// Internal wallet move: principal nets to zero; only fee is outflow.
+	if (row.type === 'transfer_out' && row.to_source != null) {
+		const fee = Number(row.fee) || 0;
+		return fee > 0 ? -fee : 0;
+	}
 	if (row.type === 'income' || row.type === 'transfer_in') return amount;
 	if (row.type === 'expense' || row.type === 'transfer_out') return -amount;
 	return null;

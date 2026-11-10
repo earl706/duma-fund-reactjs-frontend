@@ -1,14 +1,15 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { ArchiveRestore, Plus, Trash2 } from 'lucide-react';
+import { ArchiveRestore, ArrowLeftRight, Plus, Trash2 } from 'lucide-react';
 
 import { BANK_PRESETS, EWALLET_PRESETS, kindLabel, unusedPresets } from '../../lib/balanceSources';
 import { formatCost } from '../../lib/format';
 import { reassignAndDeleteSource, sourcesApi, useFinanceBalance } from '../../lib/resources';
 import { toast } from '../../stores/toastStore';
-import { useIsProfileOwner, useProfileStore } from '../../stores/profileStore';
+import { useCanEditLedger, useIsProfileOwner, useProfileStore } from '../../stores/profileStore';
 import { Button, Card, CardBody, CardHeader, Input, Modal, Select } from '../ui';
 import { MoneyField } from './MoneyField';
+import { MoveMoneyModal } from './MoveMoneyModal';
 
 function errorDetail(err) {
 	const data = err?.response?.data;
@@ -25,6 +26,7 @@ function errorDetail(err) {
 export function WalletSourcesCard() {
 	const queryClient = useQueryClient();
 	const isOwner = useIsProfileOwner();
+	const canEdit = useCanEditLedger();
 	const profileName = useProfileStore((s) => s.activeProfile()?.name);
 	const hydrate = useProfileStore((s) => s.hydrate);
 	const { data: balance } = useFinanceBalance();
@@ -32,6 +34,7 @@ export function WalletSourcesCard() {
 
 	const [startingDrafts, setStartingDrafts] = useState({});
 	const [adding, setAdding] = useState(false);
+	const [moveOpen, setMoveOpen] = useState(false);
 	const [customName, setCustomName] = useState('');
 	const [customKind, setCustomKind] = useState('ewallet');
 	const [customStart, setCustomStart] = useState('0.00');
@@ -182,17 +185,26 @@ export function WalletSourcesCard() {
 	const reassignLabel =
 		reassignOptions.find((s) => String(s.id) === String(reassignTo))?.name || 'Cash';
 
-	const addControls = isOwner ? (
-		adding ? (
-			<Button variant="ghost" size="sm" onClick={() => setAdding(false)}>
-				Done
-			</Button>
-		) : (
-			<Button variant="secondary" size="sm" onClick={() => setAdding(true)}>
-				<Plus size={16} /> Add bank or e-wallet
-			</Button>
-		)
-	) : null;
+	const addControls = (
+		<div className="flex flex-wrap items-center justify-end gap-2">
+			{canEdit && (
+				<Button variant="secondary" size="sm" onClick={() => setMoveOpen(true)}>
+					<ArrowLeftRight size={16} /> Move money
+				</Button>
+			)}
+			{isOwner ? (
+				adding ? (
+					<Button variant="ghost" size="sm" onClick={() => setAdding(false)}>
+						Done
+					</Button>
+				) : (
+					<Button variant="secondary" size="sm" onClick={() => setAdding(true)}>
+						<Plus size={16} /> Add bank or e-wallet
+					</Button>
+				)
+			) : null}
+		</div>
+	);
 
 	return (
 		<>
@@ -434,6 +446,8 @@ export function WalletSourcesCard() {
 					</Select>
 				</div>
 			</Modal>
+
+			<MoveMoneyModal open={moveOpen} onClose={() => setMoveOpen(false)} sources={sources} />
 		</>
 	);
 }

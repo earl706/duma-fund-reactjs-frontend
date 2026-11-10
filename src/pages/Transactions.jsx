@@ -28,6 +28,8 @@ import { AuthorChip } from '../components/finance/AuthorChip';
 import { ReceiptImportModal } from '../components/finance/ReceiptImportModal';
 import { MobileTransactionsView } from '../components/finance/MobileTransactionsView';
 import { MobileTransactionEditModal } from '../components/finance/MobileTransactionEditModal';
+import { MoveMoneyModal } from '../components/finance/MoveMoneyModal';
+import { LedgerAmount } from '../components/finance/txnDisplay';
 import {
 	SegmentedToggle,
 	TransactionCalendarView
@@ -70,26 +72,8 @@ const TYPE_OPTIONS = [
 
 const DEFAULT_ORDERING = '-date_effective,-created_at';
 
-/** Display-only signed amount: + inflows, − outflows (unicode minus). */
-function formatSignedAmount(amount, type) {
-	const formatted = formatCost(amount);
-	if (formatted === '—') return formatted;
-	const inflow = type === 'income' || type === 'transfer_in';
-	return `${inflow ? '+' : '−'}${formatted}`;
-}
-
-function amountToneClass(type) {
-	if (type === 'income' || type === 'transfer_in') return 'text-success';
-	if (type === 'expense' || type === 'transfer_out') return 'text-danger';
-	return 'text-fg';
-}
-
-function SignedAmount({ amount, type, className }) {
-	return (
-		<span className={cn('font-bold tabular-nums', amountToneClass(type), className)}>
-			{formatSignedAmount(amount, type)}
-		</span>
-	);
+function SignedAmount({ amount, type, row, className }) {
+	return <LedgerAmount amount={amount} type={type} row={row} className={className} bold />;
 }
 
 function todayISO() {
@@ -270,6 +254,7 @@ export default function TransactionsPage() {
 	const [inserting, setInserting] = useState(false);
 	const [scanOpen, setScanOpen] = useState(false);
 	const [accountsOpen, setAccountsOpen] = useState(false);
+	const [moveOpen, setMoveOpen] = useState(false);
 	const [selectedIds, setSelectedIds] = useState([]);
 	const [importDraft, setImportDraft] = useState(null);
 	const [csvBusy, setCsvBusy] = useState(false);
@@ -794,9 +779,31 @@ export default function TransactionsPage() {
 				type: 'select',
 				options: sourceSelectOpts,
 				className: 'w-[11%]',
-				getDisplay: (row) => sourcesById.get(row.source)?.name || '—'
+				getDisplay: (row) => {
+					const from = sourcesById.get(row.source)?.name || '—';
+					if (row.type === 'transfer_out' && row.to_source != null) {
+						const to = sourcesById.get(row.to_source)?.name || '—';
+						return `${from} → ${to}`;
+					}
+					return from;
+				}
 			},
-			{ key: 'title', label: 'Title', editable: true, className: 'w-[18%]', purchaseHint: true },
+			{
+				key: 'title',
+				label: 'Title',
+				editable: true,
+				className: 'w-[18%]',
+				purchaseHint: true,
+				getDisplay: (row) => {
+					if (row.type === 'transfer_out' && row.to_source != null) {
+						return (
+							row.title ||
+							`${sourcesById.get(row.source)?.name || '?'} → ${sourcesById.get(row.to_source)?.name || '?'}`
+						);
+					}
+					return row.title || '';
+				}
+			},
 			{
 				key: 'merchant',
 				label: 'Store',
@@ -812,7 +819,7 @@ export default function TransactionsPage() {
 				inputType: 'number',
 				className: 'w-[10%]',
 				getDraft: (row) => String(row.amount ?? ''),
-				render: (row) => <SignedAmount amount={row.amount} type={row.type} />
+				render: (row) => <SignedAmount amount={row.amount} type={row.type} row={row} />
 			},
 			{
 				key: 'categories',
@@ -907,7 +914,7 @@ export default function TransactionsPage() {
 			{ label: 'Source', value: sourcesById.get(txn.source)?.name || '—' },
 			{
 				label: 'Amount',
-				value: <SignedAmount amount={txn.amount} type={txn.type} />
+				value: <SignedAmount amount={txn.amount} type={txn.type} row={txn} />
 			},
 			{ label: 'Category', value: expenseTags },
 			{
@@ -1000,6 +1007,7 @@ export default function TransactionsPage() {
 					onRequestDelete={canEdit ? setDeleteTarget : undefined}
 					onRequestEdit={canEdit ? setEditTarget : undefined}
 					onAccounts={() => setAccountsOpen(true)}
+					onMove={canEdit ? () => setMoveOpen(true) : undefined}
 					viewToggle={viewToggle}
 					view={view}
 					calendar={
@@ -1016,6 +1024,11 @@ export default function TransactionsPage() {
 					}
 				/>
 				<AccountsInformationModal open={accountsOpen} onClose={() => setAccountsOpen(false)} />
+				<MoveMoneyModal
+					open={moveOpen}
+					onClose={() => setMoveOpen(false)}
+					sources={balance?.sources || sources}
+				/>
 				<MobileTransactionEditModal
 					open={Boolean(editTarget)}
 					row={editTarget}
@@ -1067,6 +1080,11 @@ export default function TransactionsPage() {
 							<Button variant="secondary" onClick={() => setAccountsOpen(true)}>
 								<BookUser size={16} /> Accounts
 							</Button>
+							{canEdit && (
+								<Button variant="secondary" onClick={() => setMoveOpen(true)}>
+									<ArrowLeftRight size={16} /> Move
+								</Button>
+							)}
 							<Button variant="secondary" onClick={exportCsv} loading={csvBusy && !importDraft}>
 								<FileDown size={16} /> Export
 							</Button>
@@ -1275,6 +1293,11 @@ export default function TransactionsPage() {
 			</Modal>
 
 			<AccountsInformationModal open={accountsOpen} onClose={() => setAccountsOpen(false)} />
+			<MoveMoneyModal
+				open={moveOpen}
+				onClose={() => setMoveOpen(false)}
+				sources={balance?.sources || sources}
+			/>
 
 			{!mobile && (
 				<ReceiptImportModal

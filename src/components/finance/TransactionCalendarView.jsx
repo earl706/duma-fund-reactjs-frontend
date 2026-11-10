@@ -3,7 +3,7 @@ import { ChevronLeft, ChevronRight } from 'lucide-react';
 
 import { cn, formatCost } from '../../lib/format';
 import { Button, EmptyState, LoadingSwap } from '../ui';
-import { amountToneClass, formatSignedAmount } from './txnDisplay';
+import { LedgerAmount } from './txnDisplay';
 import { TransactionDayDetailBody, TransactionDayDetailModal } from './TransactionDayDetailModal';
 import {
 	CAL_GRAINS,
@@ -138,9 +138,12 @@ function DayCell({ day, anchor, txns, compact, aggregateOnly, onOpen }) {
 								<span className={cn('min-w-0 truncate', inMonth ? 'text-fg' : 'text-muted')}>
 									{txn.title || 'Untitled'}
 								</span>
-								<span className={cn('shrink-0 tabular-nums', amountToneClass(txn.type))}>
-									{formatSignedAmount(txn.amount, txn.type)}
-								</span>
+								<LedgerAmount
+									amount={txn.amount}
+									type={txn.type}
+									row={txn}
+									className="shrink-0 text-[10px] font-normal"
+								/>
 							</li>
 						))}
 						{more > 0 ? <li className="text-muted text-[10px]">+{more} more</li> : null}

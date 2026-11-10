@@ -18,7 +18,7 @@ import { cn, formatActivityDate, formatCost, hasUpcomingBalance } from '../../li
 import { PageHeader } from '../layout/PageHeader';
 import { Button, EmptyState, LoadingSwap } from '../ui';
 import { ProfileSwitcher } from './ProfileSwitcher';
-import { TypeGlyph, amountToneClass, formatSignedAmount } from './txnDisplay';
+import { LedgerAmount, TypeGlyph } from './txnDisplay';
 
 const PERIODS = [
 	{ value: '7', label: '7', title: 'Past 7 days' },
@@ -323,7 +323,11 @@ function DashboardPane({
 										to={`/transactions/${row.id}`}
 										className="flex cursor-pointer items-center gap-3 py-2.5"
 									>
-										<TypeGlyph type={row.type} />
+										<TypeGlyph
+											type={
+												row.type === 'transfer_out' && row.to_source != null ? 'transfer' : row.type
+											}
+										/>
 										<div className="min-w-0 flex-1">
 											<p className="text-fg truncate text-[15px] leading-tight font-medium">
 												{row.title || 'Untitled'}
@@ -333,14 +337,12 @@ function DashboardPane({
 												{row.date_effective ? ` · ${formatActivityDate(row.date_effective)}` : ''}
 											</p>
 										</div>
-										<span
-											className={cn(
-												'shrink-0 text-[15px] font-semibold tabular-nums',
-												amountToneClass(row.type)
-											)}
-										>
-											{formatSignedAmount(row.amount, row.type)}
-										</span>
+										<LedgerAmount
+											amount={row.amount}
+											type={row.type}
+											row={row}
+											className="shrink-0 text-[15px]"
+										/>
 									</Link>
 								</li>
 							))}

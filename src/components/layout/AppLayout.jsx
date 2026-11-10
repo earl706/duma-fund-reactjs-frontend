@@ -65,7 +65,7 @@ export function AppLayout() {
 				>
 					<div
 						className={cn(
-							'mx-auto flex w-full max-w-6xl flex-1 flex-col px-4 sm:px-6 lg:px-8',
+							'mx-auto flex w-full max-w-7xl flex-1 flex-col px-4 sm:px-6 lg:px-8',
 							lockHome
 								? mobile
 									? 'min-h-0 overflow-hidden pt-3 pb-[calc(5.5rem+env(safe-area-inset-bottom))]'

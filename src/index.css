@@ -113,14 +113,33 @@ html.mobile-app *::-webkit-scrollbar {
   height: 0;
 }
 
-/* iOS zooms focused fields smaller than 16px (Tailwind text-sm is 14px). */
+/* iOS Safari zooms focused fields smaller than 16px (Tailwind text-sm is 14px).
+   Apply for VITE_MOBILE (.mobile-app) and any viewport below Tailwind lg —
+   same breakpoint as useMobileLayout / MOBILE_LAYOUT_MQ. Pinch-zoom stays
+   enabled on web (native shell may still lock max-scale in main.jsx).
+   [class] raises specificity above utilities like text-sm. */
 html.mobile-app {
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
 }
 
-html.mobile-app :is(input, textarea, select) {
+@media (max-width: 1023px) {
+  html {
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+}
+
+html.mobile-app :is(input, textarea, select),
+html.mobile-app :is(input, textarea, select)[class] {
   font-size: 16px;
+}
+
+@media (max-width: 1023px) {
+  html :is(input, textarea, select)[class],
+  html :is(input, textarea, select):not([class]) {
+    font-size: 16px;
+  }
 }
 
 /* Hide horizontal strip while snap-swiping Dashboard ↔ Analytics. */

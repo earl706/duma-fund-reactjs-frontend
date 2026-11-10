@@ -3,7 +3,7 @@ import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxi
 
 import { cn, formatCost, formatDate } from '../../lib/format';
 import { Button, EmptyState, Modal } from '../ui';
-import { amountToneClass, formatSignedAmount } from './txnDisplay';
+import { LedgerAmount } from './txnDisplay';
 import { dayTotals, hourSeries } from './transactionCalendar';
 
 function tooltipStyle() {
@@ -136,14 +136,12 @@ export function TransactionDayDetailBody({ dateISO, transactions, onNavigate }) 
 									<span className="text-fg min-w-0 truncate text-sm font-medium">
 										{txn.title || 'Untitled'}
 									</span>
-									<span
-										className={cn(
-											'shrink-0 text-sm font-semibold tabular-nums',
-											amountToneClass(txn.type)
-										)}
-									>
-										{formatSignedAmount(txn.amount, txn.type)}
-									</span>
+									<LedgerAmount
+										amount={txn.amount}
+										type={txn.type}
+										row={txn}
+										className="shrink-0 text-sm"
+									/>
 								</Link>
 							</li>
 						))}

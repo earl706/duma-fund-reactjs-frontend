@@ -15,7 +15,7 @@ import { useProfileStore } from '../../stores/profileStore';
 import { StickyPageChrome } from '../layout/StickyPageChrome';
 import { Button, EmptyState, LoadingSwap, Modal } from '../ui';
 import { AuthorChip } from './AuthorChip';
-import { TypeGlyph, amountToneClass, formatSignedAmount } from './txnDisplay';
+import { LedgerAmount, TypeGlyph } from './txnDisplay';
 
 const TYPE_FILTER = [
 	{ value: '', label: 'All types' },
@@ -133,6 +133,7 @@ export function MobileTransactionsView({
 	onRequestDelete,
 	onRequestEdit,
 	onAccounts,
+	onMove,
 	viewToggle,
 	view = 'list',
 	calendar = null
@@ -202,6 +203,17 @@ export function MobileTransactionsView({
 							<BookUser size={18} />
 						</Button>
 					)}
+					{onMove && (
+						<Button
+							variant="secondary"
+							size="icon"
+							className="h-11 w-11 shrink-0 rounded-full"
+							onClick={onMove}
+							aria-label="Move money between sources"
+						>
+							<ArrowLeftRight size={18} />
+						</Button>
+					)}
 					<Button
 						variant="secondary"
 						size="icon"
@@ -260,29 +272,44 @@ export function MobileTransactionsView({
 												row.status === 'archived' && 'opacity-55'
 											)}
 										>
-											<TypeGlyph type={row.type} />
+											<TypeGlyph
+												type={
+													row.type === 'transfer_out' && row.to_source != null
+														? 'transfer'
+														: row.type
+												}
+											/>
 											<div className="min-w-0 flex-1">
 												<p className="text-fg truncate text-[15px] font-medium">
-													{row.title || 'Untitled'}
+													{row.type === 'transfer_out' && row.to_source != null
+														? row.title ||
+															`${sourcesById?.get(row.source)?.name || '?'} → ${sourcesById?.get(row.to_source)?.name || '?'}`
+														: row.title || 'Untitled'}
 												</p>
 												<p className="text-muted mt-0.5 truncate text-xs">
-													{sourcesById?.get(row.source)?.name
-														? `${sourcesById.get(row.source).name} · `
-														: ''}
-													{row.merchant || 'Unknown'}
-													{row.date_effective ? ` · ${formatDate(row.date_effective)}` : ''}
-													{row.status === 'archived' ? ' · Archived' : ''}
+													{row.type === 'transfer_out' && row.to_source != null
+														? [
+																row.date_effective ? formatDate(row.date_effective) : null,
+																row.status === 'archived' ? 'Archived' : null
+															]
+																.filter(Boolean)
+																.join(' · ')
+														: `${
+																sourcesById?.get(row.source)?.name
+																	? `${sourcesById.get(row.source).name} · `
+																	: ''
+															}${row.merchant || 'Unknown'}${
+																row.date_effective ? ` · ${formatDate(row.date_effective)}` : ''
+															}${row.status === 'archived' ? ' · Archived' : ''}`}
 												</p>
 											</div>
 											{showAuthors && <AuthorChip author={row.author} size={28} />}
-											<span
-												className={cn(
-													'shrink-0 text-[15px] font-semibold tabular-nums',
-													amountToneClass(row.type)
-												)}
-											>
-												{formatSignedAmount(row.amount, row.type)}
-											</span>
+											<LedgerAmount
+												amount={row.amount}
+												type={row.type}
+												row={row}
+												className="shrink-0 text-[15px]"
+											/>
 										</TransactionRowButton>
 										{onRequestDelete && (
 											<Button

@@ -42,6 +42,8 @@ import { useListControls } from '../hooks/useListControls';
 import { GroceryExportModal } from '../components/costs/GroceryExportModal';
 import { ReceiptImportModal } from '../components/finance/ReceiptImportModal';
 import { MAX_EXPENSE_CATEGORIES } from '../components/finance/CategoryMultiSelect';
+import { MobileTransactionItemEditModal } from '../components/finance/MobileTransactionItemEditModal';
+import { MobileTransactionItemsView } from '../components/finance/MobileTransactionItemsView';
 import { PageHeader } from '../components/layout/PageHeader';
 import { StickyPageChrome } from '../components/layout/StickyPageChrome';
 import {
@@ -157,19 +159,8 @@ export default function TransactionDetailPage() {
 		return txn.category != null ? [Number(txn.category)] : [];
 	}, [txn]);
 
-	const [categoryDraftIds, setCategoryDraftIds] = useState(null);
-	const [categoryDraftPrimary, setCategoryDraftPrimary] = useState(null);
-
-	useEffect(() => {
-		setCategoryDraftIds(null);
-		setCategoryDraftPrimary(null);
-	}, [txn?.id, txn?.updated_at]);
-
-	const editingCategories = categoryDraftIds != null;
-	const displayCategoryIds = editingCategories ? categoryDraftIds : headerCategoryIds;
-	const displayPrimary = editingCategories
-		? categoryDraftPrimary
-		: (txn?.category ?? headerCategoryIds[0] ?? null);
+	const displayCategoryIds = headerCategoryIds;
+	const displayPrimary = txn?.category ?? headerCategoryIds[0] ?? null;
 
 	const { search, setSearch, ordering, setOrdering, filters, setFilter, queryParams } =
 		useListControls({ defaultOrdering: DEFAULT_ORDERING });
@@ -197,6 +188,7 @@ export default function TransactionDetailPage() {
 	const [deleteTarget, setDeleteTarget] = useState(null);
 	const [bulkDeleteIds, setBulkDeleteIds] = useState(null);
 	const [infoTarget, setInfoTarget] = useState(null);
+	const [editTarget, setEditTarget] = useState(null);
 	const [autoEdit, setAutoEdit] = useState(null);
 	const [exportOpen, setExportOpen] = useState(false);
 	const [scanOpen, setScanOpen] = useState(false);
@@ -221,7 +213,10 @@ export default function TransactionDetailPage() {
 			toast.success('Item added.');
 			queryClient.invalidateQueries({ queryKey: ['finance-transactions'] });
 			queryClient.invalidateQueries({ queryKey: ['finance-balance'] });
-			if (created?.id != null) {
+			if (created?.id == null) return;
+			if (mobile) {
+				setEditTarget(created);
+			} else {
 				setAutoEdit({ id: created.id, field: 'title', key: `${created.id}-${Date.now()}` });
 			}
 		}
@@ -272,7 +267,10 @@ export default function TransactionDetailPage() {
 			queryClient.invalidateQueries({ queryKey: ['finance-transaction-items'] });
 			queryClient.invalidateQueries({ queryKey: ['finance-transactions'] });
 			queryClient.invalidateQueries({ queryKey: ['finance-balance'] });
-			if (created?.id != null) {
+			if (created?.id == null) return;
+			if (mobile) {
+				setEditTarget(created);
+			} else {
 				setAutoEdit({
 					id: created.id,
 					field: 'title',
@@ -291,47 +289,47 @@ export default function TransactionDetailPage() {
 		updateItem.mutate(body);
 	};
 
-	const applyCategoryDraft = ({ ids, primaryId }) => {
-		setCategoryDraftIds(ids);
-		setCategoryDraftPrimary(primaryId);
+	const persistHeaderCategories = ({ ids, primaryId }) => {
+		if (!txnId || !ids?.length) return;
+		updateTxn.mutate(
+			{
+				id: txnId,
+				category: primaryId,
+				categories: ids
+			},
+			{
+				onSuccess: () => toast.success('Categories updated.'),
+				onError: () => toast.error('Could not update categories.')
+			}
+		);
 	};
 
 	const toggleHeaderCategory = (id) => {
+		if (!canEdit || updateTxn.isPending) return;
 		const selected = displayCategoryIds.map(Number);
 		const primary = displayPrimary != null ? Number(displayPrimary) : (selected[0] ?? null);
 		const n = Number(id);
 		if (selected.includes(n)) {
 			if (selected.length <= 1) return;
 			const ids = selected.filter((x) => x !== n);
-			applyCategoryDraft({ ids, primaryId: primary === n ? (ids[0] ?? null) : primary });
+			persistHeaderCategories({
+				ids,
+				primaryId: primary === n ? (ids[0] ?? null) : primary
+			});
 		} else if (selected.length < MAX_EXPENSE_CATEGORIES) {
-			applyCategoryDraft({ ids: [...selected, n], primaryId: primary ?? n });
+			persistHeaderCategories({ ids: [...selected, n], primaryId: primary ?? n });
 		}
 	};
 
 	const setHeaderPrimary = (id) => {
+		if (!canEdit || updateTxn.isPending) return;
 		const selected = displayCategoryIds.map(Number);
 		const n = Number(id);
 		if (!selected.includes(n)) return;
-		applyCategoryDraft({ ids: [n, ...selected.filter((x) => x !== n)], primaryId: n });
-	};
-
-	const saveHeaderCategories = () => {
-		if (!txnId || !displayCategoryIds?.length) return;
-		updateTxn.mutate(
-			{
-				id: txnId,
-				category: displayPrimary,
-				categories: displayCategoryIds
-			},
-			{
-				onSuccess: () => {
-					setCategoryDraftIds(null);
-					setCategoryDraftPrimary(null);
-					toast.success('Categories updated.');
-				}
-			}
-		);
+		persistHeaderCategories({
+			ids: [n, ...selected.filter((x) => x !== n)],
+			primaryId: n
+		});
 	};
 
 	const columns = useMemo(
@@ -535,14 +533,14 @@ export default function TransactionDetailPage() {
 							</div>
 							<div
 								className={cn(
-									'grid grid-cols-8 gap-1.5',
+									'grid grid-cols-4 gap-1.5 md:grid-cols-8',
 									(!canEdit || updateTxn.isPending) && 'pointer-events-none opacity-60'
 								)}
 								role="group"
 								aria-label="Expense categories"
 							>
 								{categoryOptions.length === 0 ? (
-									<p className="text-muted col-span-8 px-0.5 py-1 text-xs">
+									<p className="text-muted col-span-4 px-0.5 py-1 text-xs md:col-span-8">
 										No expense categories.
 									</p>
 								) : (
@@ -596,23 +594,6 @@ export default function TransactionDetailPage() {
 								)}
 							</div>
 						</div>
-						{editingCategories && (
-							<div className="flex justify-end gap-2">
-								<Button
-									variant="secondary"
-									size="sm"
-									onClick={() => {
-										setCategoryDraftIds(null);
-										setCategoryDraftPrimary(null);
-									}}
-								>
-									Cancel
-								</Button>
-								<Button size="sm" loading={updateTxn.isPending} onClick={saveHeaderCategories}>
-									Save
-								</Button>
-							</div>
-						)}
 					</div>
 				)}
 
@@ -642,6 +623,18 @@ export default function TransactionDetailPage() {
 						<LoadingSwap loading={isLoading}>
 							{isError ? (
 								<EmptyState icon={ArrowLeftRight} title="Could not load items" />
+							) : mobile ? (
+								<MobileTransactionItemsView
+									rows={items}
+									canEdit={canEdit}
+									adding={createItem.isPending || duplicating}
+									onAdd={canEdit ? addItem : undefined}
+									onOpenItem={(row) => {
+										if (canEdit) setEditTarget(row);
+										else setInfoTarget(row);
+									}}
+									onRequestDelete={canEdit ? setDeleteTarget : undefined}
+								/>
 							) : (
 								<DataSheet
 									rows={items}
@@ -667,6 +660,25 @@ export default function TransactionDetailPage() {
 						</LoadingSwap>
 					</>
 				)}
+
+				<MobileTransactionItemEditModal
+					open={Boolean(editTarget)}
+					row={editTarget}
+					unitOptions={UNIT_OPTIONS}
+					saving={updateItem.isPending}
+					duplicating={duplicating}
+					onClose={() => !updateItem.isPending && !duplicating && setEditTarget(null)}
+					onSave={(body) => {
+						updateItem.mutate(body, {
+							onSuccess: () => {
+								toast.success('Item updated.');
+								setEditTarget(null);
+							},
+							onError: () => toast.error('Could not update item.')
+						});
+					}}
+					onDuplicate={canEdit ? duplicateItem : undefined}
+				/>
 
 				<Modal
 					open={Boolean(deleteTarget)}
