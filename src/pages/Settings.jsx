@@ -121,10 +121,12 @@ export default function SettingsPage() {
 	const mobile = useMobileLayout();
 	const {
 		provider,
-		openaiApiKey,
 		openaiModel,
-		geminiApiKey,
 		geminiModel,
+		openaiKeySet,
+		openaiKeyHint,
+		geminiKeySet,
+		geminiKeyHint,
 		setProvider,
 		setOpenAI,
 		setGemini,
@@ -339,7 +341,10 @@ export default function SettingsPage() {
 
 				<SettingsPanel id="receipt-ai" active={activeTab}>
 					<Card>
-						<CardHeader title="Receipt AI" subtitle="Used for receipt scan when a key is saved" />
+						<CardHeader
+							title="Receipt AI"
+							subtitle="Saved on your account — available on desktop, mobile, and browser"
+						/>
 						<CardBody className="space-y-4">
 							<div>
 								<span className="text-fg mb-1.5 block text-sm font-medium">Provider</span>
@@ -366,31 +371,38 @@ export default function SettingsPage() {
 										type="password"
 										autoComplete="new-password"
 										name="openai-api-key"
-										value={openaiKeyDraft != null ? openaiKeyDraft : openaiApiKey}
+										value={openaiKeyDraft != null ? openaiKeyDraft : ''}
 										onChange={(e) => setOpenaiKeyDraft(e.target.value)}
-										onBlur={() => {
+										onBlur={async () => {
 											if (openaiKeyDraft == null) return;
-											if (openaiKeyDraft === openaiApiKey) {
-												setOpenaiKeyDraft(null);
-												return;
-											}
-											setOpenAI({ apiKey: openaiKeyDraft });
+											const next = openaiKeyDraft.trim();
 											setOpenaiKeyDraft(null);
+											if (!next) return;
+											try {
+												await setOpenAI({ apiKey: next });
+												toast.success('OpenAI key saved to your account.');
+											} catch {
+												toast.error('Could not save OpenAI key.');
+											}
 										}}
-										placeholder="sk-…"
+										placeholder={openaiKeySet && openaiKeyHint ? `••••${openaiKeyHint}` : 'sk-…'}
 									/>
 									<Input
 										label="OpenAI model"
 										value={openaiModelDraft != null ? openaiModelDraft : openaiModel}
 										onChange={(e) => setOpenaiModelDraft(e.target.value)}
-										onBlur={() => {
+										onBlur={async () => {
 											if (openaiModelDraft == null) return;
 											if (openaiModelDraft.trim() === openaiModel) {
 												setOpenaiModelDraft(null);
 												return;
 											}
-											setOpenAI({ model: openaiModelDraft });
-											setOpenaiModelDraft(null);
+											try {
+												await setOpenAI({ model: openaiModelDraft });
+												setOpenaiModelDraft(null);
+											} catch {
+												toast.error('Could not save OpenAI model.');
+											}
 										}}
 										placeholder="gpt-4o-mini"
 									/>
@@ -402,31 +414,38 @@ export default function SettingsPage() {
 										type="password"
 										autoComplete="new-password"
 										name="gemini-api-key"
-										value={geminiKeyDraft != null ? geminiKeyDraft : geminiApiKey}
+										value={geminiKeyDraft != null ? geminiKeyDraft : ''}
 										onChange={(e) => setGeminiKeyDraft(e.target.value)}
-										onBlur={() => {
+										onBlur={async () => {
 											if (geminiKeyDraft == null) return;
-											if (geminiKeyDraft === geminiApiKey) {
-												setGeminiKeyDraft(null);
-												return;
-											}
-											setGemini({ apiKey: geminiKeyDraft });
+											const next = geminiKeyDraft.trim();
 											setGeminiKeyDraft(null);
+											if (!next) return;
+											try {
+												await setGemini({ apiKey: next });
+												toast.success('Gemini key saved to your account.');
+											} catch {
+												toast.error('Could not save Gemini key.');
+											}
 										}}
-										placeholder="AIza…"
+										placeholder={geminiKeySet && geminiKeyHint ? `••••${geminiKeyHint}` : 'AIza…'}
 									/>
 									<Input
 										label="Gemini model"
 										value={geminiModelDraft != null ? geminiModelDraft : geminiModel}
 										onChange={(e) => setGeminiModelDraft(e.target.value)}
-										onBlur={() => {
+										onBlur={async () => {
 											if (geminiModelDraft == null) return;
 											if (geminiModelDraft.trim() === geminiModel) {
 												setGeminiModelDraft(null);
 												return;
 											}
-											setGemini({ model: geminiModelDraft });
-											setGeminiModelDraft(null);
+											try {
+												await setGemini({ model: geminiModelDraft });
+												setGeminiModelDraft(null);
+											} catch {
+												toast.error('Could not save Gemini model.');
+											}
 										}}
 										placeholder="gemini-3.5-flash"
 									/>
@@ -437,12 +456,16 @@ export default function SettingsPage() {
 								type="button"
 								variant="secondary"
 								className="w-full"
-								disabled={!openaiApiKey && !geminiApiKey}
-								onClick={() => {
-									clearKeys();
-									setOpenaiKeyDraft(null);
-									setGeminiKeyDraft(null);
-									toast.success('Saved API keys cleared.');
+								disabled={!openaiKeySet && !geminiKeySet}
+								onClick={async () => {
+									try {
+										await clearKeys();
+										setOpenaiKeyDraft(null);
+										setGeminiKeyDraft(null);
+										toast.success('Saved API keys cleared.');
+									} catch {
+										toast.error('Could not clear keys.');
+									}
 								}}
 							>
 								Clear saved keys

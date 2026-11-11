@@ -1,120 +1,212 @@
 import { create } from 'zustand';
 
-const STORAGE_KEY = 'dumafund.llm';
+import { api } from '../lib/api';
+
+const LEGACY_STORAGE_KEY = 'dumafund.llm';
 
 export const LLM_PROVIDERS = ['openai', 'gemini'];
 
 export const DEFAULT_LLM_CONFIG = {
 	provider: 'openai',
-	openaiApiKey: '',
 	openaiModel: 'gpt-4o-mini',
-	geminiApiKey: '',
-	geminiModel: 'gemini-3.5-flash'
+	geminiModel: 'gemini-3.5-flash',
+	openaiKeySet: false,
+	openaiKeyHint: '',
+	geminiKeySet: false,
+	geminiKeyHint: ''
 };
 
-function loadConfig() {
-	if (typeof window === 'undefined') return { ...DEFAULT_LLM_CONFIG };
+function mapServerPayload(data) {
+	const provider = LLM_PROVIDERS.includes(data?.provider)
+		? data.provider
+		: DEFAULT_LLM_CONFIG.provider;
+	return {
+		provider,
+		openaiModel:
+			typeof data?.openai_model === 'string' && data.openai_model.trim()
+				? data.openai_model.trim()
+				: DEFAULT_LLM_CONFIG.openaiModel,
+		geminiModel:
+			typeof data?.gemini_model === 'string' && data.gemini_model.trim()
+				? data.gemini_model.trim()
+				: DEFAULT_LLM_CONFIG.geminiModel,
+		openaiKeySet: Boolean(data?.openai_key_set),
+		openaiKeyHint: typeof data?.openai_key_hint === 'string' ? data.openai_key_hint : '',
+		geminiKeySet: Boolean(data?.gemini_key_set),
+		geminiKeyHint: typeof data?.gemini_key_hint === 'string' ? data.gemini_key_hint : ''
+	};
+}
+
+function readLegacyLocalKeys() {
+	if (typeof window === 'undefined') return null;
 	try {
-		const raw = localStorage.getItem(STORAGE_KEY);
-		if (!raw) return { ...DEFAULT_LLM_CONFIG };
+		const raw = localStorage.getItem(LEGACY_STORAGE_KEY);
+		if (!raw) return null;
 		const parsed = JSON.parse(raw);
-		const provider = LLM_PROVIDERS.includes(parsed?.provider)
-			? parsed.provider
-			: DEFAULT_LLM_CONFIG.provider;
 		return {
-			provider,
-			openaiApiKey: typeof parsed?.openaiApiKey === 'string' ? parsed.openaiApiKey : '',
+			provider: LLM_PROVIDERS.includes(parsed?.provider)
+				? parsed.provider
+				: DEFAULT_LLM_CONFIG.provider,
+			openaiApiKey: typeof parsed?.openaiApiKey === 'string' ? parsed.openaiApiKey.trim() : '',
 			openaiModel:
 				typeof parsed?.openaiModel === 'string' && parsed.openaiModel.trim()
 					? parsed.openaiModel.trim()
 					: DEFAULT_LLM_CONFIG.openaiModel,
-			geminiApiKey: typeof parsed?.geminiApiKey === 'string' ? parsed.geminiApiKey : '',
+			geminiApiKey: typeof parsed?.geminiApiKey === 'string' ? parsed.geminiApiKey.trim() : '',
 			geminiModel:
 				typeof parsed?.geminiModel === 'string' && parsed.geminiModel.trim()
 					? parsed.geminiModel.trim()
 					: DEFAULT_LLM_CONFIG.geminiModel
 		};
 	} catch {
-		return { ...DEFAULT_LLM_CONFIG };
+		return null;
 	}
 }
 
-function persist(state) {
+function clearLegacyLocalKeys() {
 	if (typeof window === 'undefined') return;
-	const { provider, openaiApiKey, openaiModel, geminiApiKey, geminiModel } = state;
-	localStorage.setItem(
-		STORAGE_KEY,
-		JSON.stringify({
-			provider,
-			openaiApiKey,
-			openaiModel,
-			geminiApiKey,
-			geminiModel
-		})
-	);
+	try {
+		localStorage.removeItem(LEGACY_STORAGE_KEY);
+	} catch {
+		/* ignore */
+	}
 }
 
-export const useLlmStore = create((set, get) => ({
-	...loadConfig(),
+async function migrateLegacyIfNeeded(server) {
+	if (server.openaiKeySet || server.geminiKeySet) {
+		clearLegacyLocalKeys();
+		return server;
+	}
+	const legacy = readLegacyLocalKeys();
+	if (!legacy) return server;
+	const body = {
+		provider: legacy.provider,
+		openai_model: legacy.openaiModel,
+		gemini_model: legacy.geminiModel
+	};
+	if (legacy.openaiApiKey) body.openai_api_key = legacy.openaiApiKey;
+	if (legacy.geminiApiKey) body.gemini_api_key = legacy.geminiApiKey;
+	if (!body.openai_api_key && !body.gemini_api_key) {
+		clearLegacyLocalKeys();
+		const { data } = await api.patch('/auth/llm/', {
+			provider: legacy.provider,
+			openai_model: legacy.openaiModel,
+			gemini_model: legacy.geminiModel
+		});
+		return mapServerPayload(data);
+	}
+	const { data } = await api.patch('/auth/llm/', body);
+	clearLegacyLocalKeys();
+	return mapServerPayload(data);
+}
 
-	setProvider(provider) {
+export const useLlmStore = create((set) => ({
+	...DEFAULT_LLM_CONFIG,
+	status: 'idle',
+	error: null,
+
+	async hydrateFromServer() {
+		set({ status: 'loading', error: null });
+		try {
+			const { data } = await api.get('/auth/llm/');
+			let next = mapServerPayload(data);
+			next = await migrateLegacyIfNeeded(next);
+			set({ ...next, status: 'ready', error: null });
+			return next;
+		} catch (err) {
+			set({ status: 'error', error: err?.message || 'Could not load Receipt AI settings.' });
+			return null;
+		}
+	},
+
+	reset() {
+		set({ ...DEFAULT_LLM_CONFIG, status: 'idle', error: null });
+	},
+
+	async setProvider(provider) {
 		if (!LLM_PROVIDERS.includes(provider)) return;
-		const next = { ...get(), provider };
-		persist(next);
 		set({ provider });
+		try {
+			const { data } = await api.patch('/auth/llm/', { provider });
+			set({ ...mapServerPayload(data), status: 'ready', error: null });
+		} catch (err) {
+			set({ error: err?.message || 'Could not save provider.' });
+		}
 	},
 
-	setOpenAI({ apiKey, model } = {}) {
-		const patch = {};
-		if (apiKey !== undefined) patch.openaiApiKey = String(apiKey);
+	async setOpenAI({ apiKey, model } = {}) {
+		const body = {};
+		if (apiKey !== undefined) {
+			const trimmed = String(apiKey).trim();
+			if (trimmed) body.openai_api_key = trimmed;
+		}
 		if (model !== undefined) {
 			const trimmed = String(model).trim();
-			patch.openaiModel = trimmed || DEFAULT_LLM_CONFIG.openaiModel;
+			body.openai_model = trimmed || DEFAULT_LLM_CONFIG.openaiModel;
+			set({ openaiModel: body.openai_model });
 		}
-		if (!Object.keys(patch).length) return;
-		const next = { ...get(), ...patch };
-		persist(next);
-		set(patch);
+		if (!Object.keys(body).length) return;
+		try {
+			const { data } = await api.patch('/auth/llm/', body);
+			set({ ...mapServerPayload(data), status: 'ready', error: null });
+		} catch (err) {
+			set({ error: err?.message || 'Could not save OpenAI settings.' });
+			throw err;
+		}
 	},
 
-	setGemini({ apiKey, model } = {}) {
-		const patch = {};
-		if (apiKey !== undefined) patch.geminiApiKey = String(apiKey);
+	async setGemini({ apiKey, model } = {}) {
+		const body = {};
+		if (apiKey !== undefined) {
+			const trimmed = String(apiKey).trim();
+			if (trimmed) body.gemini_api_key = trimmed;
+		}
 		if (model !== undefined) {
 			const trimmed = String(model).trim();
-			patch.geminiModel = trimmed || DEFAULT_LLM_CONFIG.geminiModel;
+			body.gemini_model = trimmed || DEFAULT_LLM_CONFIG.geminiModel;
+			set({ geminiModel: body.gemini_model });
 		}
-		if (!Object.keys(patch).length) return;
-		const next = { ...get(), ...patch };
-		persist(next);
-		set(patch);
+		if (!Object.keys(body).length) return;
+		try {
+			const { data } = await api.patch('/auth/llm/', body);
+			set({ ...mapServerPayload(data), status: 'ready', error: null });
+		} catch (err) {
+			set({ error: err?.message || 'Could not save Gemini settings.' });
+			throw err;
+		}
 	},
 
-	clearKeys() {
-		const patch = { openaiApiKey: '', geminiApiKey: '' };
-		const next = { ...get(), ...patch };
-		persist(next);
-		set(patch);
+	async clearKeys() {
+		try {
+			const { data } = await api.delete('/auth/llm/keys/');
+			set({ ...mapServerPayload(data), status: 'ready', error: null });
+		} catch (err) {
+			set({ error: err?.message || 'Could not clear keys.' });
+			throw err;
+		}
 	}
 }));
 
-/** Active provider credentials for scan, or null to use server env. */
+/** True when the active provider has an account-saved key (server uses it on scan). */
+export function hasActiveLlmKey() {
+	const { provider, openaiKeySet, geminiKeySet } = useLlmStore.getState();
+	return provider === 'gemini' ? geminiKeySet : openaiKeySet;
+}
+
+/** @deprecated Prefer hasActiveLlmKey; kept for callers that only gate UI. */
 export function getActiveLlmCredentials() {
-	const { provider, openaiApiKey, openaiModel, geminiApiKey, geminiModel } = useLlmStore.getState();
+	if (!hasActiveLlmKey()) return null;
+	const { provider, openaiModel, geminiModel } = useLlmStore.getState();
 	if (provider === 'gemini') {
-		const apiKey = geminiApiKey.trim();
-		if (!apiKey) return null;
 		return {
 			provider: 'gemini',
-			apiKey,
+			apiKey: '',
 			model: (geminiModel || DEFAULT_LLM_CONFIG.geminiModel).trim()
 		};
 	}
-	const apiKey = openaiApiKey.trim();
-	if (!apiKey) return null;
 	return {
 		provider: 'openai',
-		apiKey,
+		apiKey: '',
 		model: (openaiModel || DEFAULT_LLM_CONFIG.openaiModel).trim()
 	};
 }

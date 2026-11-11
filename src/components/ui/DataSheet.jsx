@@ -1,15 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Link } from 'react-router-dom';
-import {
-	ArrowDownToLine,
-	ArrowUpToLine,
-	CopyPlus,
-	ExternalLink,
-	Info,
-	Plus,
-	Trash2
-} from 'lucide-react';
+import { CopyPlus, ExternalLink, Info, Plus, Trash2 } from 'lucide-react';
 
 import { Spinner } from './feedback';
 
@@ -244,9 +236,9 @@ function SheetOverlay({
  * `{ id, field, value, patch: { [field]: qty, [unitKey]: unit } }`.
  * Column type `multi-select`: checkbox list (expense categories). Commit sends
  * `{ id, field, value, patch }` from `col.buildPatch(ids, primaryId)`.
- * Column type `actions`: `info` / `insert-above` / `insert-below` /
- * `duplicate` / `delete` icon buttons. Optional `col.leading(row)` renders
- * before those buttons (e.g. author initials on shared profiles).
+ * Column type `actions`: `info` / `duplicate` / `delete` icon buttons.
+ * Optional `col.leading(row)` renders before those buttons (e.g. author
+ * initials on shared profiles).
  * Expense category editor and title purchase-hint are portaled to
  * document.body so later table rows and the add-row footer cannot paint
  * over them. Last eight rows (and cells with no room below) open upward.
@@ -266,8 +258,6 @@ export function DataSheet({
 	onAdd,
 	onRequestDelete,
 	onRequestDuplicate,
-	onRequestInsertAbove,
-	onRequestInsertBelow,
 	onRequestInfo,
 	onBulkDelete,
 	onSelectionChange,
@@ -791,32 +781,6 @@ export function DataSheet({
 							aria-label={`Info for ${rowLabel(row)}`}
 						>
 							<Info size={14} />
-						</Button>
-					)}
-					{canMutate && actions.includes('insert-above') && (
-						<Button
-							variant="ghost"
-							size="icon"
-							className="h-7 w-7"
-							onClick={() => onRequestInsertAbove?.(row)}
-							disabled={adding || saving}
-							aria-label={`Insert above ${rowLabel(row)}`}
-							title="Insert above"
-						>
-							<ArrowUpToLine size={14} />
-						</Button>
-					)}
-					{canMutate && actions.includes('insert-below') && (
-						<Button
-							variant="ghost"
-							size="icon"
-							className="h-7 w-7"
-							onClick={() => onRequestInsertBelow?.(row)}
-							disabled={adding || saving}
-							aria-label={`Insert below ${rowLabel(row)}`}
-							title="Insert below"
-						>
-							<ArrowDownToLine size={14} />
 						</Button>
 					)}
 					{canMutate && actions.includes('duplicate') && (

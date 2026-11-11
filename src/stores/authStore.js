@@ -2,6 +2,7 @@ import { create } from 'zustand';
 
 import { api, getApiBaseURL, tokenStore } from '../lib/api';
 import { effectiveRememberMe, isMobileApp } from '../lib/desktop';
+import { useLlmStore } from './llmStore';
 import { useProfileStore } from './profileStore';
 
 function isTransientAuthError(err) {
@@ -11,6 +12,10 @@ function isTransientAuthError(err) {
 }
 
 let authGeneration = 0;
+
+function hydrateLlmSettings() {
+	void useLlmStore.getState().hydrateFromServer();
+}
 
 function applySession(data) {
 	if (data.mfa_required) {
@@ -30,6 +35,7 @@ function applySession(data) {
 	}
 	authGeneration += 1;
 	tokenStore.set({ access: data.access, refresh: data.refresh });
+	hydrateLlmSettings();
 	return {
 		user: data.user,
 		status: 'authenticated',
@@ -204,6 +210,7 @@ export const useAuthStore = create((set, get) => ({
 				const { data } = await api.get('/auth/me/');
 				if (gen !== authGeneration) return;
 				set({ user: data, status: 'authenticated', error: null });
+				hydrateLlmSettings();
 				return;
 			} catch (err) {
 				if (gen !== authGeneration) return;
@@ -240,6 +247,7 @@ export const useAuthStore = create((set, get) => ({
 	logout() {
 		tokenStore.clear();
 		useProfileStore.getState().reset();
+		useLlmStore.getState().reset();
 		set({
 			user: null,
 			status: 'unauthenticated',

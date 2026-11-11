@@ -203,6 +203,11 @@ export default function TransactionsPage() {
 			defaultFilters: mobile ? { status: 'active' } : {}
 		});
 
+	/** Creates (add / duplicate / CSV / receipt) reset sort; edits/deletes keep it. */
+	const resetDefaultOrdering = useCallback(() => {
+		setOrdering(DEFAULT_ORDERING);
+	}, [setOrdering]);
+
 	const listParams = useMemo(() => {
 		const rest = { ...queryParams };
 		delete rest.page;
@@ -251,7 +256,6 @@ export default function TransactionsPage() {
 	const [pendingFocusId, setPendingFocusId] = useState(null);
 	const [bulkDeleting, setBulkDeleting] = useState(false);
 	const [duplicating, setDuplicating] = useState(false);
-	const [inserting, setInserting] = useState(false);
 	const [scanOpen, setScanOpen] = useState(false);
 	const [accountsOpen, setAccountsOpen] = useState(false);
 	const [moveOpen, setMoveOpen] = useState(false);
@@ -285,6 +289,7 @@ export default function TransactionsPage() {
 	const createTxn = transactionsApi.useCreate({
 		onSuccess: (created) => {
 			toast.success('Transaction created.');
+			resetDefaultOrdering();
 			queryClient.invalidateQueries({ queryKey: ['finance-balance'] });
 			if (created?.id == null) return;
 			if (mobile) {
@@ -324,7 +329,7 @@ export default function TransactionsPage() {
 	};
 
 	const duplicateTxn = async (row) => {
-		if (duplicating || inserting || !row?.id) return;
+		if (duplicating || !row?.id) return;
 		setDuplicating(true);
 		try {
 			const isTransfer = row.type === 'transfer_in' || row.type === 'transfer_out';
@@ -361,6 +366,7 @@ export default function TransactionsPage() {
 				);
 			}
 			toast.success('Transaction duplicated.');
+			resetDefaultOrdering();
 			queryClient.invalidateQueries({ queryKey: ['finance-transactions'] });
 			queryClient.invalidateQueries({ queryKey: ['finance-balance'] });
 			if (created?.id != null) {
@@ -374,44 +380,6 @@ export default function TransactionsPage() {
 			toast.error('Could not duplicate transaction.');
 		} finally {
 			setDuplicating(false);
-		}
-	};
-
-	const insertAdjacentTxn = async (row, position) => {
-		if (inserting || duplicating || createTxn.isPending || !row?.id) return;
-		if (!defaultExpenseCategoryId) {
-			toast.error('Create an expense category first.');
-			return;
-		}
-		setInserting(true);
-		try {
-			const created = await post('/finance/transactions/', {
-				type: 'expense',
-				title: 'Untitled',
-				amount: '0.00',
-				note: '',
-				category: defaultExpenseCategoryId,
-				categories: [defaultExpenseCategoryId],
-				status: 'active',
-				date_created: todayISO(),
-				date_effective: row.date_effective || todayISO(),
-				insert_relative_to: row.id,
-				insert_position: position
-			});
-			toast.success(position === 'above' ? 'Inserted above.' : 'Inserted below.');
-			queryClient.invalidateQueries({ queryKey: ['finance-transactions'] });
-			queryClient.invalidateQueries({ queryKey: ['finance-balance'] });
-			if (created?.id != null) {
-				setAutoEdit({
-					id: created.id,
-					field: 'title',
-					key: `${created.id}-${Date.now()}`
-				});
-			}
-		} catch {
-			toast.error('Could not insert transaction.');
-		} finally {
-			setInserting(false);
 		}
 	};
 
@@ -618,6 +586,7 @@ export default function TransactionsPage() {
 				await mapLimit(existingIds, 6, (id) => del(`/finance/transactions/${id}/`));
 			}
 
+			if (created > 0) resetDefaultOrdering();
 			await refreshLedger();
 			setImportDraft(null);
 
@@ -875,7 +844,7 @@ export default function TransactionsPage() {
 				key: 'actions',
 				label: '',
 				type: 'actions',
-				actions: ['info', 'insert-above', 'insert-below', 'duplicate', 'delete'],
+				actions: ['info', 'duplicate', 'delete'],
 				className: showAuthors ? 'w-[13rem]' : 'w-[11.25rem]',
 				leading: showAuthors
 					? (row) => (
@@ -1167,15 +1136,13 @@ export default function TransactionsPage() {
 							onAdd={canEdit ? addExpense : undefined}
 							onRequestDelete={canEdit ? setDeleteTarget : undefined}
 							onRequestDuplicate={canEdit ? duplicateTxn : undefined}
-							onRequestInsertAbove={canEdit ? (row) => insertAdjacentTxn(row, 'above') : undefined}
-							onRequestInsertBelow={canEdit ? (row) => insertAdjacentTxn(row, 'below') : undefined}
 							onRequestInfo={setInfoTarget}
 							onBulkDelete={canEdit ? setBulkDeleteIds : undefined}
 							onSelectionChange={onSelectionChange}
 							selectable={canEdit}
 							readOnly={!canEdit}
-							adding={createTxn.isPending || duplicating || inserting}
-							saving={updateTxn.isPending || duplicating || inserting}
+							adding={createTxn.isPending || duplicating}
+							saving={updateTxn.isPending || duplicating}
 							pendingCells={pendingCells}
 							autoEdit={autoEdit}
 							addLabel="New transaction"
@@ -1307,8 +1274,7 @@ export default function TransactionsPage() {
 					incomeCategories={incomeCategories}
 					onCommitted={async (created) => {
 						const focusId = firstCommittedTransactionId(created);
-						// Newest logged first — receipt date_effective often buries new rows mid-list.
-						setOrdering('-date_created');
+						resetDefaultOrdering();
 						if (focusId != null) setPendingFocusId(focusId);
 						await queryClient.invalidateQueries({ queryKey: ['finance-transactions'] });
 						queryClient.invalidateQueries({ queryKey: ['finance-balance'] });

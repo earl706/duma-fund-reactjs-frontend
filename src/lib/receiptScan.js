@@ -1,5 +1,4 @@
 import { api, getApiBaseURL, post } from './api';
-import { getActiveLlmCredentials } from '../stores/llmStore';
 
 const UNIT_OPTIONS = ['pcs', 'kg', 'g', 'L', 'mL'];
 
@@ -12,14 +11,6 @@ const SCAN_AUTO_RETRY_DELAY_MS = 1500;
 
 function sleep(ms) {
 	return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-function appendLlmFields(form) {
-	const llm = getActiveLlmCredentials();
-	if (!llm) return;
-	form.append('llm_provider', llm.provider);
-	form.append('llm_api_key', llm.apiKey);
-	form.append('llm_model', llm.model);
 }
 
 function isTransientScanDetail(detail = '') {
@@ -109,7 +100,6 @@ export async function scanReceipt(file) {
 	return postReceiptScan('/finance/transactions/scan-receipt/', () => {
 		const form = new FormData();
 		form.append('image', file);
-		appendLlmFields(form);
 		return form;
 	});
 }
@@ -131,7 +121,6 @@ export async function bulkScanReceipts(files) {
 		files.forEach((file, index) => {
 			form.append(`image_${index}`, file);
 		});
-		appendLlmFields(form);
 		return form;
 	});
 }
