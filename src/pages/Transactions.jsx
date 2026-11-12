@@ -786,7 +786,8 @@ export default function TransactionsPage() {
 				editable: true,
 				align: 'right',
 				inputType: 'number',
-				className: 'w-[10%]',
+				truncate: false,
+				className: 'w-[12%]',
 				getDraft: (row) => String(row.amount ?? ''),
 				render: (row) => <SignedAmount amount={row.amount} type={row.type} row={row} />
 			},

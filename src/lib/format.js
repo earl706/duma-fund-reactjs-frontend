@@ -102,49 +102,51 @@ export function clamp(n, min, max) {
 	return Math.max(min, Math.min(max, n));
 }
 
+/** Chop to `places` decimals toward zero — never round (9999 → 9.99k, not 10k). */
+function truncatePlaces(n, places = 2) {
+	const f = 10 ** places;
+	return Math.trunc(n * f) / f;
+}
+
 /**
- * Short money label: k / M / B with '.' decimal, 1 place only when needed.
- * e.g. 14700 → 14.7k, 15000 → 15k, 157000000 → 157M
+ * Short money label: k / M / B with '.' decimal, up to 2 places when needed.
+ * Digits beyond 2dp are truncated, not rounded. e.g. 9999 → 9.99k, 12210 → 12.21k
  */
+function formatCompactScaled(scaled, suffix) {
+	const truncated = truncatePlaces(scaled, 2);
+	if (Number.isInteger(truncated)) return `${truncated}${suffix}`;
+	return `${truncated.toFixed(2).replace(/\.?0+$/, '')}${suffix}`;
+}
+
 function formatCostCompactAbs(abs) {
 	const tiers = [
 		{ min: 1e9, div: 1e9, suffix: 'B' },
 		{ min: 1e6, div: 1e6, suffix: 'M' },
 		{ min: 1e3, div: 1e3, suffix: 'k' }
 	];
-	for (let i = 0; i < tiers.length; i++) {
-		const tier = tiers[i];
+	for (const tier of tiers) {
 		if (abs < tier.min) continue;
-		let scaled = abs / tier.div;
-		let rounded = Math.round(scaled * 10) / 10;
-		// 999.95k → 1000k → bump to next unit
-		if (rounded >= 1000 && i > 0) {
-			const next = tiers[i - 1];
-			scaled = abs / next.div;
-			rounded = Math.round(scaled * 10) / 10;
-			if (Number.isInteger(rounded)) return `${rounded}${next.suffix}`;
-			return `${rounded.toFixed(1)}${next.suffix}`;
-		}
-		if (Number.isInteger(rounded)) return `${rounded}${tier.suffix}`;
-		return `${rounded.toFixed(1)}${tier.suffix}`;
+		return formatCompactScaled(abs / tier.div, tier.suffix);
 	}
 	return null;
 }
 
 /**
- * Format a money amount. Values with |n| ≥ 10000 use short form (14.7k / 157M);
- * smaller amounts keep locale two-decimal style. Sign preserved for negatives.
+ * Format a money amount. Values with |n| ≥ minCompact use short form (9.99k / 157M);
+ * smaller amounts keep locale two-decimal style. Never rounds — extra digits are
+ * truncated. Pass minCompact: 1000 for cramped dual labels (e.g. Move amount−fee).
  */
-export function formatCost(value) {
+export function formatCost(value, { minCompact = 10000 } = {}) {
 	if (value == null || value === '') return '—';
 	const n = Number(value);
 	if (Number.isNaN(n)) return '—';
 	const abs = Math.abs(n);
-	if (abs >= 10000) {
+	if (abs >= minCompact) {
 		const body = formatCostCompactAbs(abs);
 		if (body) return n < 0 ? `-${body}` : body;
 	}
-	return n.toLocaleString(undefined, {
+	const truncated = truncatePlaces(n, 2);
+	return truncated.toLocaleString(undefined, {
 		minimumFractionDigits: 2,
 		maximumFractionDigits: 2
 	});

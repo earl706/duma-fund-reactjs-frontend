@@ -250,6 +250,7 @@ function SheetOverlay({
  * `pendingCells` maps row id → column keys currently saving (spinner + muted cell).
  * `col.cornerBadge(row)` renders a non-layout absolute node (e.g. top-right icon)
  * inside the cell; the cell becomes `relative` and skips td-level truncate.
+ * `col.truncate === false` skips td/content ellipsis (e.g. dual-tone Move amounts).
  */
 export function DataSheet({
 	rows,
@@ -1189,6 +1190,7 @@ export function DataSheet({
 											fillHandleCell?.rowId === row.id &&
 											fillHandleCell?.colKey === col.key;
 										const cornerBadge = col.cornerBadge?.(row) ?? null;
+										const allowTruncate = col.truncate !== false;
 										const titleText = cellPending
 											? 'Saving…'
 											: isFillableCell(col)
@@ -1203,7 +1205,7 @@ export function DataSheet({
 												aria-busy={cellPending || undefined}
 												className={cn(
 													'text-fg transition-opacity duration-200 select-none',
-													!cornerBadge && 'truncate',
+													allowTruncate && !cornerBadge && 'truncate',
 													(hasFillHandle || cellPending || cornerBadge) && 'relative',
 													cellPad,
 													col.align === 'right' && 'text-right tabular-nums',
@@ -1232,7 +1234,9 @@ export function DataSheet({
 													)}
 												>
 													{cellPending && <Spinner size={12} alt="" />}
-													<span className="min-w-0 truncate">{shown}</span>
+													<span className={cn('min-w-0', allowTruncate && 'truncate')}>
+														{shown}
+													</span>
 												</span>
 												{cornerBadge}
 												{hasFillHandle && !cellPending && (

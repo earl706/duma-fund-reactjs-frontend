@@ -20,13 +20,18 @@ function internalFee(row) {
 	return Number.isFinite(fee) && fee > 0 ? fee : 0;
 }
 
+/** Compact from 1k when fee is shown so principal−fee fits Amount cells. */
+function formatMovePart(value) {
+	return formatCost(value, { minCompact: 1000 });
+}
+
 /** Plain-text fallback: principal, or `amount-fee` when fee > 0. */
 export function formatInternalTransferAmount(row) {
-	const principal = formatCost(row?.amount);
-	if (principal === '—') return principal;
 	const fee = internalFee(row);
+	const principal = fee > 0 ? formatMovePart(row?.amount) : formatCost(row?.amount);
+	if (principal === '—') return principal;
 	if (fee <= 0) return principal;
-	const feeLabel = formatCost(fee);
+	const feeLabel = formatMovePart(fee);
 	if (feeLabel === '—') return principal;
 	return `${principal}-${feeLabel}`;
 }
@@ -53,11 +58,22 @@ export function amountToneClass(type, row) {
 export function LedgerAmount({ amount, type, row, className, bold = false }) {
 	const weight = bold ? 'font-bold' : 'font-semibold';
 	if (isInternalTransfer(row)) {
-		const principal = formatCost(row.amount);
 		const fee = internalFee(row);
-		const feeLabel = fee > 0 ? formatCost(fee) : null;
+		const principal = fee > 0 ? formatMovePart(row.amount) : formatCost(row.amount);
+		const feeLabel = fee > 0 ? formatMovePart(fee) : null;
+		const title =
+			fee > 0
+				? `${formatCost(row.amount, { minCompact: Infinity })}-${formatCost(fee, { minCompact: Infinity })}`
+				: undefined;
 		return (
-			<span className={cn('tabular-nums', weight, className)}>
+			<span
+				className={cn(
+					'inline-flex max-w-full items-baseline whitespace-nowrap tabular-nums',
+					weight,
+					className
+				)}
+				title={title}
+			>
 				<span className="text-muted">{principal}</span>
 				{feeLabel && feeLabel !== '—' ? <span className="text-danger">-{feeLabel}</span> : null}
 			</span>
