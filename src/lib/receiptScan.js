@@ -136,6 +136,7 @@ function appendReceiptFields(
 		category_ids,
 		date_effective,
 		source_id,
+		is_partial,
 		items,
 		entries
 	}
@@ -153,6 +154,9 @@ function appendReceiptFields(
 	if (date_effective) form.append('date_effective', date_effective);
 	if (source_id != null && source_id !== '') {
 		form.append('source_id', String(source_id));
+	}
+	if (document_kind !== 'bank_slip' && is_partial) {
+		form.append('is_partial', 'true');
 	}
 	if (document_kind === 'bank_slip') {
 		form.append('entries', JSON.stringify(entries || []));
@@ -174,6 +178,7 @@ export async function commitReceipt({
 	category_ids,
 	date_effective,
 	source_id,
+	is_partial,
 	items,
 	entries
 }) {
@@ -188,6 +193,7 @@ export async function commitReceipt({
 		category_ids,
 		date_effective,
 		source_id,
+		is_partial,
 		items,
 		entries
 	});
@@ -199,7 +205,7 @@ export async function commitReceipt({
 /**
  * Commit 1–10 reviewed drafts in one request.
  * Each entry: { file?, document_kind, title, merchant, note, category_id?, category_ids?,
- *   date_effective?, items?, entries? }
+ *   date_effective?, source_id?, is_partial?, items?, entries? }
  */
 export async function commitReceiptsBulk(receipts) {
 	if (!Array.isArray(receipts) || !receipts.length) {
@@ -220,6 +226,7 @@ export async function commitReceiptsBulk(receipts) {
 			category_ids,
 			date_effective,
 			source_id,
+			is_partial,
 			items,
 			entries
 		}) => {
@@ -239,6 +246,7 @@ export async function commitReceiptsBulk(receipts) {
 			}
 			if (date_effective) row.date_effective = date_effective;
 			if (source_id != null && source_id !== '') row.source_id = source_id;
+			if (document_kind !== 'bank_slip' && is_partial) row.is_partial = true;
 			return row;
 		}
 	);

@@ -18,7 +18,7 @@ import { toast } from '../../stores/toastStore';
 import { cn } from '../../lib/format';
 import { Button, FadeIn, Input, LoadingScreen, Modal, Select } from '../ui';
 import { InlineMoneyInput, MoneyField } from './MoneyField';
-import { PurchaseHint } from './PurchaseHint';
+import { ScanPurchaseActions } from './PurchaseHint';
 import { ReceiptCropper } from './ReceiptCropper';
 import { CategoryMultiSelect, MAX_EXPENSE_CATEGORIES } from './CategoryMultiSelect';
 import { amountToneClass, formatSignedAmount } from './txnDisplay';
@@ -83,6 +83,26 @@ function DraftTotals({ items, className }) {
 				</p>
 			))}
 		</div>
+	);
+}
+
+/** Opt-in marker: logged lines are intentionally incomplete vs the paper receipt. */
+function PartialReceiptToggle({ checked, onChange, className }) {
+	return (
+		<label
+			className={cn(
+				'text-muted hover:text-fg inline-flex cursor-pointer items-center gap-2 text-xs',
+				className
+			)}
+		>
+			<input
+				type="checkbox"
+				className="border-line text-primary focus-visible:ring-primary/40 h-3.5 w-3.5 rounded-sm"
+				checked={checked}
+				onChange={(e) => onChange?.(e.target.checked)}
+			/>
+			<span title="Logged items are not the full receipt total">Partial receipt</span>
+		</label>
 	);
 }
 
@@ -198,6 +218,7 @@ function draftFromScan(data, file, fallbackCategoryId, fallbackIncomeCategoryId,
 		headerCategoryId: primary ? String(primary) : '',
 		headerCategoryIds: rolled,
 		sourceId: resolveSourceId(data.merchant, sources, cashId) || cashId || '',
+		isPartial: false,
 		rows: normalizeDraftItems(data.items),
 		bankEntries: []
 	};
@@ -546,6 +567,7 @@ export function ReceiptImportModal({
 					category_ids: ids,
 					date_effective: draft.dateEffective || undefined,
 					source_id: draft.sourceId ? Number(draft.sourceId) : undefined,
+					is_partial: Boolean(draft.isPartial),
 					items: draft.rows.map(({ title, cost, quantity, unit }) => ({
 						title: title.trim(),
 						cost,
@@ -915,23 +937,28 @@ function RetailDraftEditor({
 				{draft.rows.map((row, index) => (
 					<li key={row._key} className="border-line space-y-2.5 rounded-md border p-3">
 						<div className="flex items-end gap-2">
-							<div className="min-w-0 flex-1">
+							<div className="min-w-0 flex-1 space-y-1.5">
+								<span className="text-fg block text-sm font-medium">
+									{index === 0 ? 'Title' : `Item ${index + 1}`}
+								</span>
 								<Input
-									label={index === 0 ? 'Title' : `Item ${index + 1}`}
 									value={row.title}
 									autoComplete="off"
 									onChange={(e) => setRow(row._key, 'title', e.target.value)}
 								/>
 							</div>
-							<Button
-								variant="ghost"
-								size="icon"
-								className="mb-0.5 h-11 w-11 shrink-0"
-								onClick={() => onPatch({ rows: draft.rows.filter((r) => r._key !== row._key) })}
-								aria-label={`Remove ${row.title || 'row'}`}
-							>
-								<Trash2 size={16} />
-							</Button>
+							<span className="mb-0.5 inline-flex shrink-0 items-center">
+								<ScanPurchaseActions query={row.title} buttonClassName="h-11 w-11" />
+								<Button
+									variant="ghost"
+									size="icon"
+									className="h-11 w-11"
+									onClick={() => onPatch({ rows: draft.rows.filter((r) => r._key !== row._key) })}
+									aria-label={`Remove ${row.title || 'row'}`}
+								>
+									<Trash2 size={16} />
+								</Button>
+							</span>
 						</div>
 						<div className="grid grid-cols-3 gap-2">
 							<MoneyField
@@ -962,11 +989,16 @@ function RetailDraftEditor({
 								))}
 							</Select>
 						</div>
-						<PurchaseHint query={row.title} className="mt-0 w-full max-w-none" />
 					</li>
 				))}
 			</ul>
-			<DraftTotals items={totals} className="md:hidden" />
+			<div className="flex flex-col items-stretch gap-2 md:hidden">
+				<DraftTotals items={totals} />
+				<PartialReceiptToggle
+					checked={Boolean(draft.isPartial)}
+					onChange={(checked) => onPatch({ isPartial: checked })}
+				/>
+			</div>
 
 			<div className="border-line hidden overflow-x-auto rounded-md border md:block">
 				<table className="w-full min-w-[640px] table-fixed border-collapse text-sm">
@@ -984,52 +1016,53 @@ function RetailDraftEditor({
 							<th className="text-muted w-20 px-2 py-2 text-left text-xs font-semibold uppercase">
 								Unit
 							</th>
-							<th className="w-10" />
+							<th className="w-24" />
 						</tr>
 					</thead>
 					<tbody>
 						{draft.rows.map((row) => (
-							<Fragment key={row._key}>
-								<tr className="border-line align-top">
-									<td className="p-1">
-										<input
-											className={TABLE_INPUT}
-											value={row.title}
-											onChange={(e) => setRow(row._key, 'title', e.target.value)}
-										/>
-									</td>
-									<td className="p-1">
-										<InlineMoneyInput
-											id={`receipt-table-price-${row._key}`}
-											label="Price"
-											value={row.cost}
-											onChange={(e) => setRow(row._key, 'cost', e.target.value)}
-											inputClassName={`${TABLE_INPUT} text-right tabular-nums`}
-										/>
-									</td>
-									<td className="p-1">
-										<InlineMoneyInput
-											id={`receipt-table-qty-${row._key}`}
-											label="Qty"
-											value={row.quantity}
-											onChange={(e) => setRow(row._key, 'quantity', e.target.value)}
-											inputClassName={`${TABLE_INPUT} text-right tabular-nums`}
-										/>
-									</td>
-									<td className="p-1">
-										<select
-											className={TABLE_INPUT}
-											value={row.unit}
-											onChange={(e) => setRow(row._key, 'unit', e.target.value)}
-										>
-											{UNIT_OPTIONS.map((unit) => (
-												<option key={unit} value={unit}>
-													{unit}
-												</option>
-											))}
-										</select>
-									</td>
-									<td className="p-1 text-center">
+							<tr key={row._key} className="border-line border-b align-top last:border-b-0">
+								<td className="p-1">
+									<input
+										className={TABLE_INPUT}
+										value={row.title}
+										onChange={(e) => setRow(row._key, 'title', e.target.value)}
+									/>
+								</td>
+								<td className="p-1">
+									<InlineMoneyInput
+										id={`receipt-table-price-${row._key}`}
+										label="Price"
+										value={row.cost}
+										onChange={(e) => setRow(row._key, 'cost', e.target.value)}
+										inputClassName={`${TABLE_INPUT} text-right tabular-nums`}
+									/>
+								</td>
+								<td className="p-1">
+									<InlineMoneyInput
+										id={`receipt-table-qty-${row._key}`}
+										label="Qty"
+										value={row.quantity}
+										onChange={(e) => setRow(row._key, 'quantity', e.target.value)}
+										inputClassName={`${TABLE_INPUT} text-right tabular-nums`}
+									/>
+								</td>
+								<td className="p-1">
+									<select
+										className={TABLE_INPUT}
+										value={row.unit}
+										onChange={(e) => setRow(row._key, 'unit', e.target.value)}
+									>
+										{UNIT_OPTIONS.map((unit) => (
+											<option key={unit} value={unit}>
+												{unit}
+											</option>
+										))}
+									</select>
+								</td>
+								<td className="p-1">
+									<div className="flex items-center justify-end gap-0">
+										<ScanPurchaseActions query={row.title} />
 										<Button
 											variant="ghost"
 											size="icon"
@@ -1043,27 +1076,37 @@ function RetailDraftEditor({
 										>
 											<Trash2 size={15} />
 										</Button>
-									</td>
-								</tr>
-								<tr className="border-line border-b last:border-b-0">
-									<td colSpan={5} className="px-1 pb-2">
-										<PurchaseHint query={row.title} className="mt-0 w-full max-w-none" />
-									</td>
-								</tr>
-							</Fragment>
+									</div>
+								</td>
+							</tr>
 						))}
 					</tbody>
 					{totals.some((item) => item.show) && (
 						<tfoot>
 							<tr className="bg-surface-2 border-line border-t">
 								<td colSpan={5} className="px-2 py-2">
-									<DraftTotals items={totals} />
+									<div className="flex flex-wrap items-center justify-between gap-2">
+										<PartialReceiptToggle
+											checked={Boolean(draft.isPartial)}
+											onChange={(checked) => onPatch({ isPartial: checked })}
+										/>
+										<DraftTotals items={totals} />
+									</div>
 								</td>
 							</tr>
 						</tfoot>
 					)}
 				</table>
 			</div>
+
+			{!totals.some((item) => item.show) && (
+				<div className="hidden md:block">
+					<PartialReceiptToggle
+						checked={Boolean(draft.isPartial)}
+						onChange={(checked) => onPatch({ isPartial: checked })}
+					/>
+				</div>
+			)}
 
 			{showRemove && (
 				<Button

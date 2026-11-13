@@ -15,7 +15,7 @@ import { useProfileStore } from '../../stores/profileStore';
 import { StickyPageChrome } from '../layout/StickyPageChrome';
 import { Button, EmptyState, LoadingSwap, Modal } from '../ui';
 import { AuthorChip } from './AuthorChip';
-import { LedgerAmount, TypeGlyph } from './txnDisplay';
+import { LedgerAmount, PartialReceiptMark, TypeGlyph } from './txnDisplay';
 
 const TYPE_FILTER = [
 	{ value: '', label: 'All types' },
@@ -272,13 +272,16 @@ export function MobileTransactionsView({
 												row.status === 'archived' && 'opacity-55'
 											)}
 										>
-											<TypeGlyph
-												type={
-													row.type === 'transfer_out' && row.to_source != null
-														? 'transfer'
-														: row.type
-												}
-											/>
+											<span className="relative shrink-0">
+												<TypeGlyph
+													type={
+														row.type === 'transfer_out' && row.to_source != null
+															? 'transfer'
+															: row.type
+													}
+												/>
+												{row.is_partial ? <PartialReceiptMark /> : null}
+											</span>
 											<div className="min-w-0 flex-1">
 												<p className="text-fg truncate text-[15px] font-medium">
 													{row.type === 'transfer_out' && row.to_source != null

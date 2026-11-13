@@ -29,7 +29,7 @@ import { ReceiptImportModal } from '../components/finance/ReceiptImportModal';
 import { MobileTransactionsView } from '../components/finance/MobileTransactionsView';
 import { MobileTransactionEditModal } from '../components/finance/MobileTransactionEditModal';
 import { MoveMoneyModal } from '../components/finance/MoveMoneyModal';
-import { LedgerAmount } from '../components/finance/txnDisplay';
+import { LedgerAmount, TxnCornerBadges } from '../components/finance/txnDisplay';
 import {
 	SegmentedToggle,
 	TransactionCalendarView
@@ -347,6 +347,7 @@ export default function TransactionsPage() {
 				source: row.source ?? undefined,
 				category: isTransfer ? null : (row.category ?? null),
 				categories: isTransfer ? [] : categoryIds,
+				is_partial: row.type === 'expense' ? Boolean(row.is_partial) : false,
 				status: row.status || 'active',
 				date_created: todayISO(),
 				date_effective: todayISO()
@@ -662,6 +663,7 @@ export default function TransactionsPage() {
 		if (body.type === 'transfer_in' || body.type === 'transfer_out') {
 			body.category = null;
 			body.categories = [];
+			body.is_partial = false;
 		} else if (body.type === 'income') {
 			const current =
 				allCategories.get(body.category) ||
@@ -674,6 +676,7 @@ export default function TransactionsPage() {
 				body.category = defaultIncomeCategoryId;
 			}
 			body.categories = [];
+			body.is_partial = false;
 		} else if (body.type === 'expense') {
 			const row = rows.find((r) => r.id === id);
 			const current = allCategories.get(body.category) || allCategories.get(row?.category);
@@ -730,16 +733,7 @@ export default function TransactionsPage() {
 				className: 'w-[11%]',
 				getDisplay: (row) =>
 					TYPE_OPTIONS.find((o) => o.value === row.type)?.label || row.type || '—',
-				cornerBadge: (row) =>
-					row.receipt_image ? (
-						<span
-							className="bg-primary/12 text-primary pointer-events-none absolute top-2 right-2 z-[1] inline-flex h-3.5 w-3.5 items-center justify-center rounded-sm"
-							title="Scanned receipt"
-							aria-label="Scanned receipt"
-						>
-							<ScanLine size={9} strokeWidth={2.5} aria-hidden />
-						</span>
-					) : null
+				cornerBadge: (row) => <TxnCornerBadges row={row} />
 			},
 			{
 				key: 'source',
@@ -748,14 +742,7 @@ export default function TransactionsPage() {
 				type: 'select',
 				options: sourceSelectOpts,
 				className: 'w-[11%]',
-				getDisplay: (row) => {
-					const from = sourcesById.get(row.source)?.name || '—';
-					if (row.type === 'transfer_out' && row.to_source != null) {
-						const to = sourcesById.get(row.to_source)?.name || '—';
-						return `${from} → ${to}`;
-					}
-					return from;
-				}
+				getDisplay: (row) => sourcesById.get(row.source)?.name || '—'
 			},
 			{
 				key: 'title',
@@ -887,6 +874,34 @@ export default function TransactionsPage() {
 				value: <SignedAmount amount={txn.amount} type={txn.type} row={txn} />
 			},
 			{ label: 'Category', value: expenseTags },
+			{
+				label: 'Partial',
+				value:
+					txn.type === 'expense' ? (
+						canEdit ? (
+							<label className="inline-flex cursor-pointer items-center gap-2">
+								<input
+									type="checkbox"
+									className="border-line text-primary focus-visible:ring-primary/40 h-3.5 w-3.5 rounded-sm"
+									checked={Boolean(txn.is_partial)}
+									disabled={updateTxn.isPending}
+									onChange={(e) => {
+										const next = e.target.checked;
+										setInfoTarget((prev) => (prev ? { ...prev, is_partial: next } : prev));
+										updateTxn.mutate({ id: txn.id, is_partial: next });
+									}}
+								/>
+								<span className="text-fg">Partial receipt</span>
+							</label>
+						) : txn.is_partial ? (
+							<Badge tone="warning">Partial</Badge>
+						) : (
+							'—'
+						)
+					) : (
+						'—'
+					)
+			},
 			{
 				label: 'Status',
 				value: (
@@ -1034,7 +1049,6 @@ export default function TransactionsPage() {
 						balance
 							? [
 									`Balance ${formatCost(balance.balance)}`,
-									`start ${formatCost(balance.starting_balance)}`,
 									hasUpcomingBalance(balance)
 										? `Projected ${formatCost(balance.projected_balance)}`
 										: null

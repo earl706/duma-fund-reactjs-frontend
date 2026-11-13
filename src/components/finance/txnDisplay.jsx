@@ -1,4 +1,11 @@
-import { ArrowDownLeft, ArrowLeftRight, ArrowUpRight, ShoppingBag } from 'lucide-react';
+import {
+	ArrowDownLeft,
+	ArrowLeftRight,
+	ArrowUpRight,
+	CircleDashed,
+	ScanLine,
+	ShoppingBag
+} from 'lucide-react';
 
 import { cn, formatCost } from '../../lib/format';
 
@@ -98,6 +105,57 @@ export function TypeGlyph({ type, size = 18, className }) {
 			)}
 		>
 			<Icon size={size} strokeWidth={2.1} />
+		</span>
+	);
+}
+
+/**
+ * Non-layout corner chip: partial wins over scanned/full; never both.
+ */
+export function TxnCornerBadges({ row, className }) {
+	const partial = Boolean(row?.is_partial);
+	const scanned = Boolean(row?.receipt_image);
+	if (!partial && !scanned) return null;
+	if (partial) {
+		return (
+			<span
+				className={cn(
+					'bg-warning/15 text-warning pointer-events-none absolute top-2 right-2 z-[1] inline-flex h-3.5 w-3.5 items-center justify-center rounded-sm',
+					className
+				)}
+				title="Partial receipt"
+				aria-label="Partial receipt"
+			>
+				<CircleDashed size={9} strokeWidth={2.5} aria-hidden />
+			</span>
+		);
+	}
+	return (
+		<span
+			className={cn(
+				'bg-primary/12 text-primary pointer-events-none absolute top-2 right-2 z-[1] inline-flex h-3.5 w-3.5 items-center justify-center rounded-sm',
+				className
+			)}
+			title="Scanned receipt"
+			aria-label="Scanned receipt"
+		>
+			<ScanLine size={9} strokeWidth={2.5} aria-hidden />
+		</span>
+	);
+}
+
+/** Compact partial marker for mobile list glyphs (no layout shift). */
+export function PartialReceiptMark({ className }) {
+	return (
+		<span
+			className={cn(
+				'bg-warning/15 text-warning pointer-events-none absolute -top-0.5 -right-0.5 inline-flex h-3.5 w-3.5 items-center justify-center rounded-sm',
+				className
+			)}
+			title="Partial receipt"
+			aria-label="Partial receipt"
+		>
+			<CircleDashed size={9} strokeWidth={2.5} aria-hidden />
 		</span>
 	);
 }

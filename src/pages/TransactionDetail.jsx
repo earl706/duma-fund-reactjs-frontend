@@ -481,7 +481,7 @@ export default function TransactionDetailPage() {
 					/>
 				</StickyPageChrome>
 
-				{(sourceOptions.length > 0 || txn.receipt_image) && (
+				{(sourceOptions.length > 0 || txn.receipt_image || isExpense) && (
 					<div className="mb-4 flex flex-wrap items-stretch gap-3">
 						{txn.receipt_image && (
 							<button
@@ -520,6 +520,32 @@ export default function TransactionDetailPage() {
 										</option>
 									))}
 								</Select>
+							</div>
+						)}
+						{isExpense && (
+							<div className="border-line bg-surface flex min-h-[6.5rem] max-w-xs min-w-[12rem] flex-1 flex-col justify-center rounded-md border px-3 py-2">
+								<label
+									className={cn(
+										'inline-flex items-start gap-2 text-sm',
+										(!canEdit || updateTxn.isPending) && 'pointer-events-none opacity-60'
+									)}
+								>
+									<input
+										type="checkbox"
+										className="border-line text-primary focus-visible:ring-primary/40 mt-0.5 h-3.5 w-3.5 rounded-sm"
+										checked={Boolean(txn.is_partial)}
+										disabled={!canEdit || updateTxn.isPending}
+										onChange={(e) => {
+											updateTxn.mutate({ id: txn.id, is_partial: e.target.checked });
+										}}
+									/>
+									<span>
+										<span className="text-fg block font-medium">Partial receipt</span>
+										<span className="text-muted mt-0.5 block text-xs">
+											Logged items are not the full receipt total
+										</span>
+									</span>
+								</label>
 							</div>
 						)}
 					</div>

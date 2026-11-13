@@ -168,6 +168,7 @@ function seedForm(row) {
 		primaryCategoryId: row.category != null ? Number(row.category) : (expenseIds[0] ?? null),
 		incomeCategory: row.type === 'income' && row.category != null ? String(row.category) : '',
 		status: row.status || 'active',
+		is_partial: Boolean(row.is_partial),
 		date_effective: row.date_effective ? formatDateShort(row.date_effective) : ''
 	};
 }
@@ -216,9 +217,11 @@ export function MobileTransactionEditModal({
 				next.categoryIds = [];
 				next.primaryCategoryId = null;
 				next.incomeCategory = '';
+				next.is_partial = false;
 			} else if (nextType === 'income') {
 				next.categoryIds = [];
 				next.primaryCategoryId = null;
+				next.is_partial = false;
 				if (!next.incomeCategory && defaultIncomeCategoryId != null) {
 					next.incomeCategory = String(defaultIncomeCategoryId);
 				}
@@ -252,6 +255,7 @@ export function MobileTransactionEditModal({
 			title: form.title,
 			merchant: form.merchant,
 			status: form.status,
+			is_partial: form.type === 'expense' ? Boolean(form.is_partial) : false,
 			date_effective: iso
 		};
 
@@ -397,6 +401,20 @@ export function MobileTransactionEditModal({
 					options={STATUS_OPTIONS}
 					onChange={(v) => setField('status', v)}
 				/>
+
+				{form.type === 'expense' && (
+					<label className="text-muted inline-flex cursor-pointer items-center gap-2 text-sm">
+						<input
+							type="checkbox"
+							className="border-line text-primary focus-visible:ring-primary/40 h-3.5 w-3.5 rounded-sm"
+							checked={Boolean(form.is_partial)}
+							onChange={(e) => setField('is_partial', e.target.checked)}
+						/>
+						<span className="text-fg" title="Logged items are not the full receipt total">
+							Partial receipt
+						</span>
+					</label>
+				)}
 
 				<Input
 					label="Effective (DD/MM/YY)"
