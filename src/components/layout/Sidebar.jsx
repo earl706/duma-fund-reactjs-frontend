@@ -42,7 +42,7 @@ function NavItem({ to, label, icon: Icon, end, collapsed }) {
 				cn(
 					'group flex cursor-pointer font-medium transition-colors',
 					collapsed
-						? 'flex-col items-center gap-1 px-1 py-1 text-[11px] leading-tight'
+						? 'flex-col items-center gap-0.5 px-0.5 py-1 text-[9px] leading-tight'
 						: 'items-center gap-3 rounded-md px-2 py-1 text-sm',
 					isActive ? 'text-fg' : 'text-muted hover:text-fg'
 				)
@@ -57,7 +57,7 @@ function NavItem({ to, label, icon: Icon, end, collapsed }) {
 							className={cn('relative z-10', isActive && 'text-primary')}
 						/>
 					</IconWell>
-					<span className={cn(collapsed && 'max-w-full truncate px-0.5 text-center')}>{label}</span>
+					<span className={cn(collapsed && 'w-full px-0.5 text-center break-words')}>{label}</span>
 				</>
 			)}
 		</NavLink>

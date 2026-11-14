@@ -3,6 +3,7 @@ export { Card, CardHeader, CardBody } from './Card';
 export { Badge } from './Badge';
 export { STATUS_TONE } from '../../lib/status';
 export { Input, Textarea, Select } from './Field';
+export { ListboxShell, ListboxOption, ListboxTrigger } from './Listbox';
 export { Modal } from './Modal';
 export { LoadingScreen, LoadingSwap, FadeIn, Spinner, Skeleton, EmptyState } from './feedback';
 export { ProgressBar, ProgressRing } from './Progress';

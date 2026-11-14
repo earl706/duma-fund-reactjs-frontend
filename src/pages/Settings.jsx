@@ -1,7 +1,15 @@
 import { useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useMutation } from '@tanstack/react-query';
-import { Calculator, LogOut, Search, Settings as SettingsIcon, Shield, Trash2 } from 'lucide-react';
+import {
+	Calculator,
+	Check,
+	LogOut,
+	Search,
+	Settings as SettingsIcon,
+	Shield,
+	Trash2
+} from 'lucide-react';
 
 import { patch } from '../lib/api';
 import { useMobileLayout } from '../hooks/useMobileLayout';
@@ -36,7 +44,68 @@ function blockChallengeClipboard(event) {
 
 const PROVIDER_LABELS = {
 	openai: 'OpenAI',
-	gemini: 'Gemini'
+	gemini: 'Gemini',
+	groq: 'Groq',
+	openrouter: 'OpenRouter'
+};
+
+const PROVIDER_FORMS = {
+	openai: {
+		keyLabel: 'OpenAI API key',
+		keyName: 'openai-api-key',
+		keyPlaceholder: 'sk-…',
+		modelLabel: 'OpenAI model',
+		modelPlaceholder: 'gpt-4o-mini',
+		modelState: 'openaiModel',
+		keySet: 'openaiKeySet',
+		keyHint: 'openaiKeyHint',
+		setter: 'setOpenAI',
+		success: 'OpenAI key saved to your account.',
+		modelError: 'Could not save OpenAI model.',
+		keyError: 'Could not save OpenAI key.'
+	},
+	gemini: {
+		keyLabel: 'Gemini API key',
+		keyName: 'gemini-api-key',
+		keyPlaceholder: 'AIza…',
+		modelLabel: 'Gemini model',
+		modelPlaceholder: 'gemini-3.5-flash',
+		modelState: 'geminiModel',
+		keySet: 'geminiKeySet',
+		keyHint: 'geminiKeyHint',
+		setter: 'setGemini',
+		success: 'Gemini key saved to your account.',
+		modelError: 'Could not save Gemini model.',
+		keyError: 'Could not save Gemini key.'
+	},
+	groq: {
+		keyLabel: 'Groq API key',
+		keyName: 'groq-api-key',
+		keyPlaceholder: 'gsk_…',
+		modelLabel: 'Groq model',
+		modelPlaceholder: 'qwen/qwen3.8-27b',
+		modelState: 'groqModel',
+		keySet: 'groqKeySet',
+		keyHint: 'groqKeyHint',
+		setter: 'setGroq',
+		success: 'Groq key saved to your account.',
+		modelError: 'Could not save Groq model.',
+		keyError: 'Could not save Groq key.'
+	},
+	openrouter: {
+		keyLabel: 'OpenRouter API key',
+		keyName: 'openrouter-api-key',
+		keyPlaceholder: 'sk-or-…',
+		modelLabel: 'OpenRouter model',
+		modelPlaceholder: 'nvidia/nemotron-3.5-super-vl:free',
+		modelState: 'openrouterModel',
+		keySet: 'openrouterKeySet',
+		keyHint: 'openrouterKeyHint',
+		setter: 'setOpenRouter',
+		success: 'OpenRouter key saved to your account.',
+		modelError: 'Could not save OpenRouter model.',
+		keyError: 'Could not save OpenRouter key.'
+	}
 };
 
 const SETTINGS_TABS = [
@@ -119,27 +188,22 @@ export default function SettingsPage() {
 	const openPalette = useUIStore((s) => s.openPalette);
 	const openCalculator = useCalculatorStore((s) => s.openCalculator);
 	const mobile = useMobileLayout();
+	const llm = useLlmStore();
 	const {
 		provider,
-		openaiModel,
-		geminiModel,
 		openaiKeySet,
-		openaiKeyHint,
 		geminiKeySet,
-		geminiKeyHint,
+		groqKeySet,
+		openrouterKeySet,
 		setProvider,
-		setOpenAI,
-		setGemini,
 		clearKeys
-	} = useLlmStore();
+	} = llm;
 	const [mfaSetupOpen, setMfaSetupOpen] = useState(false);
 	const [deleteOpen, setDeleteOpen] = useState(false);
 	const [deleteConfirm, setDeleteConfirm] = useState('');
 	const [newEmail, setNewEmail] = useState('');
-	const [openaiKeyDraft, setOpenaiKeyDraft] = useState(null);
-	const [openaiModelDraft, setOpenaiModelDraft] = useState(null);
-	const [geminiKeyDraft, setGeminiKeyDraft] = useState(null);
-	const [geminiModelDraft, setGeminiModelDraft] = useState(null);
+	const [keyDraft, setKeyDraft] = useState(null);
+	const [modelDraft, setModelDraft] = useState(null);
 
 	const saveName = useMutation({
 		mutationFn: (body) => patch('/auth/me/', body),
@@ -344,132 +408,138 @@ export default function SettingsPage() {
 						<CardHeader
 							title="Receipt AI"
 							subtitle="Saved on your account — available on desktop, mobile, and browser"
+							action={
+								<Button
+									type="button"
+									variant="secondary"
+									size="sm"
+									className="shrink-0"
+									disabled={!openaiKeySet && !geminiKeySet && !groqKeySet && !openrouterKeySet}
+									onClick={async () => {
+										try {
+											await clearKeys();
+											setKeyDraft(null);
+											setModelDraft(null);
+											toast.success('All saved API keys cleared.');
+										} catch {
+											toast.error('Could not clear keys.');
+										}
+									}}
+								>
+									Clear all keys
+								</Button>
+							}
 						/>
 						<CardBody className="space-y-4">
 							<div>
 								<span className="text-fg mb-1.5 block text-sm font-medium">Provider</span>
-								<div className="flex gap-2">
-									{LLM_PROVIDERS.map((p) => (
-										<button
-											key={p}
-											type="button"
-											onClick={() => setProvider(p)}
-											className={`flex-1 cursor-pointer rounded-md border px-4 py-2 text-sm ${
-												provider === p ? 'border-primary text-primary' : 'border-line text-muted'
-											}`}
-										>
-											{PROVIDER_LABELS[p]}
-										</button>
-									))}
+								<div className="flex flex-wrap gap-2">
+									{LLM_PROVIDERS.map((p) => {
+										const form = PROVIDER_FORMS[p];
+										const keySaved = Boolean(llm[form.keySet]);
+										const selected = provider === p;
+										return (
+											<button
+												key={p}
+												type="button"
+												onClick={() => {
+													setKeyDraft(null);
+													setModelDraft(null);
+													setProvider(p);
+												}}
+												aria-label={
+													keySaved ? `${PROVIDER_LABELS[p]}, API key saved` : PROVIDER_LABELS[p]
+												}
+												className={`flex min-w-[calc(50%-0.25rem)] flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-md border px-3 py-2 text-sm sm:min-w-0 ${
+													selected ? 'border-primary text-primary' : 'border-line text-muted'
+												}`}
+											>
+												{PROVIDER_LABELS[p]}
+												{keySaved ? (
+													<span
+														className="bg-success/15 text-success inline-flex size-4 shrink-0 items-center justify-center rounded-sm"
+														title="API key saved"
+														aria-hidden="true"
+													>
+														<Check size={11} strokeWidth={2.75} className="block" />
+													</span>
+												) : null}
+											</button>
+										);
+									})}
 								</div>
 							</div>
 
-							{provider === 'openai' ? (
-								<>
-									<Input
-										label="OpenAI API key"
-										type="password"
-										autoComplete="new-password"
-										name="openai-api-key"
-										value={openaiKeyDraft != null ? openaiKeyDraft : ''}
-										onChange={(e) => setOpenaiKeyDraft(e.target.value)}
-										onBlur={async () => {
-											if (openaiKeyDraft == null) return;
-											const next = openaiKeyDraft.trim();
-											setOpenaiKeyDraft(null);
-											if (!next) return;
-											try {
-												await setOpenAI({ apiKey: next });
-												toast.success('OpenAI key saved to your account.');
-											} catch {
-												toast.error('Could not save OpenAI key.');
-											}
-										}}
-										placeholder={openaiKeySet && openaiKeyHint ? `••••${openaiKeyHint}` : 'sk-…'}
-									/>
-									<Input
-										label="OpenAI model"
-										value={openaiModelDraft != null ? openaiModelDraft : openaiModel}
-										onChange={(e) => setOpenaiModelDraft(e.target.value)}
-										onBlur={async () => {
-											if (openaiModelDraft == null) return;
-											if (openaiModelDraft.trim() === openaiModel) {
-												setOpenaiModelDraft(null);
-												return;
-											}
-											try {
-												await setOpenAI({ model: openaiModelDraft });
-												setOpenaiModelDraft(null);
-											} catch {
-												toast.error('Could not save OpenAI model.');
-											}
-										}}
-										placeholder="gpt-4o-mini"
-									/>
-								</>
-							) : (
-								<>
-									<Input
-										label="Gemini API key"
-										type="password"
-										autoComplete="new-password"
-										name="gemini-api-key"
-										value={geminiKeyDraft != null ? geminiKeyDraft : ''}
-										onChange={(e) => setGeminiKeyDraft(e.target.value)}
-										onBlur={async () => {
-											if (geminiKeyDraft == null) return;
-											const next = geminiKeyDraft.trim();
-											setGeminiKeyDraft(null);
-											if (!next) return;
-											try {
-												await setGemini({ apiKey: next });
-												toast.success('Gemini key saved to your account.');
-											} catch {
-												toast.error('Could not save Gemini key.');
-											}
-										}}
-										placeholder={geminiKeySet && geminiKeyHint ? `••••${geminiKeyHint}` : 'AIza…'}
-									/>
-									<Input
-										label="Gemini model"
-										value={geminiModelDraft != null ? geminiModelDraft : geminiModel}
-										onChange={(e) => setGeminiModelDraft(e.target.value)}
-										onBlur={async () => {
-											if (geminiModelDraft == null) return;
-											if (geminiModelDraft.trim() === geminiModel) {
-												setGeminiModelDraft(null);
-												return;
-											}
-											try {
-												await setGemini({ model: geminiModelDraft });
-												setGeminiModelDraft(null);
-											} catch {
-												toast.error('Could not save Gemini model.');
-											}
-										}}
-										placeholder="gemini-3.5-flash"
-									/>
-								</>
-							)}
-
-							<Button
-								type="button"
-								variant="secondary"
-								className="w-full"
-								disabled={!openaiKeySet && !geminiKeySet}
-								onClick={async () => {
-									try {
-										await clearKeys();
-										setOpenaiKeyDraft(null);
-										setGeminiKeyDraft(null);
-										toast.success('Saved API keys cleared.');
-									} catch {
-										toast.error('Could not clear keys.');
-									}
-								}}
-							>
-								Clear saved keys
-							</Button>
+							{(() => {
+								const form = PROVIDER_FORMS[provider] || PROVIDER_FORMS.openai;
+								const savedModel = llm[form.modelState];
+								const keySet = llm[form.keySet];
+								const keyHint = llm[form.keyHint];
+								const save = llm[form.setter];
+								const label = PROVIDER_LABELS[provider] || 'provider';
+								return (
+									<>
+										<Input
+											label={form.keyLabel}
+											type="password"
+											autoComplete="new-password"
+											name={form.keyName}
+											value={keyDraft != null ? keyDraft : ''}
+											onChange={(e) => setKeyDraft(e.target.value)}
+											onBlur={async () => {
+												if (keyDraft == null) return;
+												const next = keyDraft.trim();
+												setKeyDraft(null);
+												if (!next) return;
+												try {
+													await save({ apiKey: next });
+													toast.success(form.success);
+												} catch {
+													toast.error(form.keyError);
+												}
+											}}
+											placeholder={keySet && keyHint ? `••••${keyHint}` : form.keyPlaceholder}
+										/>
+										<Input
+											label={form.modelLabel}
+											value={modelDraft != null ? modelDraft : savedModel}
+											onChange={(e) => setModelDraft(e.target.value)}
+											onBlur={async () => {
+												if (modelDraft == null) return;
+												if (modelDraft.trim() === savedModel) {
+													setModelDraft(null);
+													return;
+												}
+												try {
+													await save({ model: modelDraft });
+													setModelDraft(null);
+												} catch {
+													toast.error(form.modelError);
+												}
+											}}
+											placeholder={form.modelPlaceholder}
+										/>
+										<Button
+											type="button"
+											variant="secondary"
+											className="w-full"
+											disabled={!keySet}
+											onClick={async () => {
+												try {
+													await clearKeys(provider);
+													setKeyDraft(null);
+													setModelDraft(null);
+													toast.success(`${label} API key cleared.`);
+												} catch {
+													toast.error(`Could not clear ${label} key.`);
+												}
+											}}
+										>
+											Clear {label} key
+										</Button>
+									</>
+								);
+							})()}
 						</CardBody>
 					</Card>
 				</SettingsPanel>

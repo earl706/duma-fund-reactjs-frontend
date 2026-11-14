@@ -1,9 +1,7 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
-import { ChevronsUpDown } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
 
-import { cn, formatDateShort, parseDateShort } from '../../lib/format';
-import { Button, Input, Modal } from '../ui';
+import { formatDateShort, parseDateShort } from '../../lib/format';
+import { Button, Input, Modal, Select } from '../ui';
 import { CategoryMultiSelect, MAX_EXPENSE_CATEGORIES } from './CategoryMultiSelect';
 import { MoneyField } from './MoneyField';
 
@@ -18,137 +16,6 @@ const STATUS_OPTIONS = [
 	{ value: 'active', label: 'Active' },
 	{ value: 'archived', label: 'Archived' }
 ];
-
-/**
- * ProfileSwitcher-style listbox: surface-2 trigger, backdrop dismiss, option list.
- * Portals the menu so Modal overflow does not clip it.
- */
-function MenuSelect({
-	label,
-	value,
-	options,
-	onChange,
-	placeholder = 'Select…',
-	disabled = false
-}) {
-	const [open, setOpen] = useState(false);
-	const triggerRef = useRef(null);
-	const [menuStyle, setMenuStyle] = useState(null);
-
-	const selected = useMemo(
-		() => options.find((o) => String(o.value) === String(value)) || null,
-		[options, value]
-	);
-
-	useLayoutEffect(() => {
-		if (!open || !triggerRef.current) {
-			setMenuStyle(null);
-			return undefined;
-		}
-		const place = () => {
-			const rect = triggerRef.current.getBoundingClientRect();
-			const maxH = 288;
-			const spaceBelow = window.innerHeight - rect.bottom - 8;
-			const openUp = spaceBelow < Math.min(maxH, 160) && rect.top > spaceBelow;
-			setMenuStyle({
-				position: 'fixed',
-				left: rect.left,
-				width: rect.width,
-				maxHeight: Math.min(maxH, openUp ? rect.top - 8 : spaceBelow),
-				...(openUp ? { bottom: window.innerHeight - rect.top + 4 } : { top: rect.bottom + 4 })
-			});
-		};
-		place();
-		window.addEventListener('resize', place);
-		window.addEventListener('scroll', place, true);
-		return () => {
-			window.removeEventListener('resize', place);
-			window.removeEventListener('scroll', place, true);
-		};
-	}, [open]);
-
-	useEffect(() => {
-		if (!open) return undefined;
-		const onKey = (e) => e.key === 'Escape' && setOpen(false);
-		document.addEventListener('keydown', onKey);
-		return () => document.removeEventListener('keydown', onKey);
-	}, [open]);
-
-	const pick = (next) => {
-		onChange?.(next);
-		setOpen(false);
-	};
-
-	return (
-		<div className="space-y-1.5">
-			{label && <p className="text-fg text-sm font-medium">{label}</p>}
-			<div className="relative">
-				<button
-					ref={triggerRef}
-					type="button"
-					disabled={disabled}
-					onClick={() => setOpen((v) => !v)}
-					className={cn(
-						'border-line bg-surface-2 hover:bg-surface-2/80 flex w-full cursor-pointer items-center gap-2 rounded-md border px-3 py-2 text-left',
-						disabled && 'pointer-events-none opacity-60'
-					)}
-					aria-haspopup="listbox"
-					aria-expanded={open}
-				>
-					<p
-						className={cn(
-							'min-w-0 flex-1 truncate text-sm font-medium',
-							selected ? 'text-fg' : 'text-muted'
-						)}
-					>
-						{selected?.label || placeholder}
-					</p>
-					<ChevronsUpDown size={16} className="text-muted shrink-0" />
-				</button>
-				{open &&
-					createPortal(
-						<>
-							<button
-								type="button"
-								className="fixed inset-0 z-[60] cursor-default"
-								aria-label={`Close ${label || 'menu'}`}
-								onClick={() => setOpen(false)}
-							/>
-							<div
-								className="border-line bg-surface z-[70] overflow-y-auto rounded-md border py-1 shadow-lg"
-								style={menuStyle || undefined}
-								role="listbox"
-							>
-								{options.length === 0 ? (
-									<p className="text-muted px-3 py-1.5 text-sm">No options</p>
-								) : (
-									options.map((opt) => {
-										const active = String(opt.value) === String(value);
-										return (
-											<button
-												key={opt.value}
-												type="button"
-												role="option"
-												aria-selected={active}
-												onClick={() => pick(opt.value)}
-												className={cn(
-													'flex w-full cursor-pointer px-3 py-1.5 text-left text-sm',
-													active ? 'bg-primary/10 text-fg' : 'text-fg hover:bg-surface-2'
-												)}
-											>
-												{opt.label}
-											</button>
-										);
-									})
-								)}
-							</div>
-						</>,
-						document.body
-					)}
-			</div>
-		</div>
-	);
-}
 
 function seedForm(row) {
 	if (!row) return null;
@@ -321,15 +188,26 @@ export function MobileTransactionEditModal({
 			}
 		>
 			<div className="space-y-4">
-				<MenuSelect label="Type" value={form.type} options={TYPE_OPTIONS} onChange={onTypeChange} />
+				<Select label="Type" value={form.type} onChange={(e) => onTypeChange(e.target.value)}>
+					{TYPE_OPTIONS.map((opt) => (
+						<option key={opt.value} value={opt.value}>
+							{opt.label}
+						</option>
+					))}
+				</Select>
 
-				<MenuSelect
+				<Select
 					label="Source"
 					value={form.source}
-					options={sourceSelectOpts}
 					placeholder="Select source"
-					onChange={(v) => setField('source', v)}
-				/>
+					onChange={(e) => setField('source', e.target.value)}
+				>
+					{sourceSelectOpts.map((opt) => (
+						<option key={opt.value} value={opt.value}>
+							{opt.label}
+						</option>
+					))}
+				</Select>
 
 				<Input
 					label="Title"
@@ -386,21 +264,31 @@ export function MobileTransactionEditModal({
 				)}
 
 				{form.type === 'income' && (
-					<MenuSelect
+					<Select
 						label="Category"
 						value={form.incomeCategory}
-						options={incomeOptions}
 						placeholder="Select category"
-						onChange={(v) => setField('incomeCategory', v)}
-					/>
+						onChange={(e) => setField('incomeCategory', e.target.value)}
+					>
+						{incomeOptions.map((opt) => (
+							<option key={opt.value} value={opt.value}>
+								{opt.label}
+							</option>
+						))}
+					</Select>
 				)}
 
-				<MenuSelect
+				<Select
 					label="Status"
 					value={form.status}
-					options={STATUS_OPTIONS}
-					onChange={(v) => setField('status', v)}
-				/>
+					onChange={(e) => setField('status', e.target.value)}
+				>
+					{STATUS_OPTIONS.map((opt) => (
+						<option key={opt.value} value={opt.value}>
+							{opt.label}
+						</option>
+					))}
+				</Select>
 
 				{form.type === 'expense' && (
 					<label className="text-muted inline-flex cursor-pointer items-center gap-2 text-sm">

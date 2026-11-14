@@ -1048,17 +1048,19 @@ function RetailDraftEditor({
 									/>
 								</td>
 								<td className="p-1">
-									<select
+									<Select
+										variant="compact"
 										className={TABLE_INPUT}
 										value={row.unit}
 										onChange={(e) => setRow(row._key, 'unit', e.target.value)}
+										aria-label="Unit"
 									>
 										{UNIT_OPTIONS.map((unit) => (
 											<option key={unit} value={unit}>
 												{unit}
 											</option>
 										))}
-									</select>
+									</Select>
 								</td>
 								<td className="p-1">
 									<div className="flex items-center justify-end gap-0">
@@ -1311,17 +1313,19 @@ function BankDraftEditor({
 							<Fragment key={row._key}>
 								<tr className="border-line align-top">
 									<td className="p-1">
-										<select
+										<Select
+											variant="compact"
 											className={TABLE_INPUT}
 											value={row.txn_type}
 											onChange={(e) => setEntryType(row._key, e.target.value)}
+											aria-label="Type"
 										>
 											{BANK_TXN_TYPES.map((opt) => (
 												<option key={opt.value} value={opt.value}>
 													{opt.label}
 												</option>
 											))}
-										</select>
+										</Select>
 									</td>
 									<td className="p-1">
 										<input
@@ -1340,17 +1344,19 @@ function BankDraftEditor({
 										/>
 									</td>
 									<td className="p-1">
-										<select
+										<Select
+											variant="compact"
 											className={TABLE_INPUT}
 											value={row.source_id || ''}
 											onChange={(e) => setEntry(row._key, 'source_id', e.target.value)}
+											aria-label="Source"
 										>
 											{sourceOptions.map((s) => (
 												<option key={s.id} value={s.id}>
 													{s.name}
 												</option>
 											))}
-										</select>
+										</Select>
 									</td>
 									<td className="p-1">
 										<InlineMoneyInput
@@ -1371,17 +1377,19 @@ function BankDraftEditor({
 									</td>
 									<td className="p-1">
 										{row.txn_type === 'income' ? (
-											<select
+											<Select
+												variant="compact"
 												className={TABLE_INPUT}
 												value={row.category_id || ''}
 												onChange={(e) => setEntry(row._key, 'category_id', e.target.value)}
+												aria-label="Category"
 											>
 												{incomeCategories.map((c) => (
 													<option key={c.id} value={c.id}>
 														{c.name}
 													</option>
 												))}
-											</select>
+											</Select>
 										) : (
 											<span className="text-muted block px-2 py-1.5 text-xs">—</span>
 										)}

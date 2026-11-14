@@ -10,6 +10,7 @@ import { CategoryMultiSelect } from '../finance/CategoryMultiSelect';
 import { InlineMoneyInput } from '../finance/MoneyField';
 import { PurchaseHint } from '../finance/PurchaseHint';
 import { Button } from './Button';
+import { Select } from './Field';
 
 const STATUS_DOT = {
 	active: 'bg-primary',
@@ -1002,9 +1003,11 @@ export function DataSheet({
 																inputClassName="bg-surface text-fg h-full min-w-0 border-0 pr-1.5 text-right text-xs tabular-nums focus:outline-none"
 																aria-label="Quantity"
 															/>
-															<select
-																className="border-line bg-surface-2 text-fg w-14 shrink-0 border-l px-0.5 text-[10px] focus:outline-none"
+															<Select
+																variant="compact"
+																className="w-14 shrink-0 rounded-none border-0 border-l text-[10px]"
 																value={draftUnit}
+																triggerRef={inputRef}
 																onChange={(e) => {
 																	skipBlurAction.current = true;
 																	commitEdit(draft, e.target.value);
@@ -1018,7 +1021,7 @@ export function DataSheet({
 																		{opt.label}
 																	</option>
 																))}
-															</select>
+															</Select>
 														</div>
 													</td>
 												);
@@ -1098,16 +1101,18 @@ export function DataSheet({
 													) : col.type === 'select' ||
 													  col.type === 'status-icon' ||
 													  (col.type === 'txn-category' && row.type === 'income') ? (
-														<select
-															ref={inputRef}
-															className="border-primary bg-surface text-fg h-7 w-full border px-1.5 text-xs focus:outline-none"
+														<Select
+															variant="compact"
+															className="border-primary h-7 w-full rounded-none"
 															value={draft}
+															triggerRef={inputRef}
 															onChange={(e) => {
 																skipBlurAction.current = true;
 																commitEdit(e.target.value);
 															}}
 															onKeyDown={onKeyDown}
 															onBlur={onBlur}
+															aria-label={col.label || col.key}
 														>
 															{(col.type === 'txn-category'
 																? col.incomeOptions || []
@@ -1117,7 +1122,7 @@ export function DataSheet({
 																	{opt.label}
 																</option>
 															))}
-														</select>
+														</Select>
 													) : inputType === 'number' ? (
 														<div ref={editorRef} className="h-7 w-full">
 															<InlineMoneyInput
