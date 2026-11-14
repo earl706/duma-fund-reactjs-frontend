@@ -345,6 +345,8 @@ export function ReceiptImportModal({
 		const byIndex = new Map((scanData?.results || []).map((r) => [r.index, r]));
 		const nextDrafts = [];
 		const nextFailures = [];
+		/** @type {{ provider: string, primary: string, label?: string, primary_label?: string }[]} */
+		const fallbackUsed = [];
 
 		preparedFiles.forEach((file, index) => {
 			const row = byIndex.get(index);
@@ -363,6 +365,8 @@ export function ReceiptImportModal({
 				nextDrafts.push(
 					draftFromScan(row.draft, file, fallbackCategoryId, fallbackIncomeCategoryId, sources)
 				);
+				const used = row.llm_used || row.draft?.llm_used;
+				if (used?.fallback) fallbackUsed.push(used);
 			} catch {
 				nextFailures.push({
 					id: failureId,
@@ -391,6 +395,20 @@ export function ReceiptImportModal({
 			);
 		} else if (nextFailures.length) {
 			toast.error('No receipts could be analyzed. Retry or start over.');
+		}
+
+		if (fallbackUsed.length) {
+			const first = fallbackUsed[0];
+			const samePair = fallbackUsed.every(
+				(u) => u.provider === first.provider && u.primary === first.primary
+			);
+			const usedLabel = first.label || first.provider;
+			const primaryLabel = first.primary_label || first.primary;
+			toast.info(
+				samePair
+					? `Scanned with ${usedLabel} (${primaryLabel} unavailable).`
+					: 'Some receipts used a backup AI provider.'
+			);
 		}
 	};
 
