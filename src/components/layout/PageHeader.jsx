@@ -62,9 +62,13 @@ export function PageHeader({
 					>
 						{title}
 					</h1>
-					{description && (
-						<p className={cn('text-muted text-sm', !cornerAbove && 'truncate')}>{description}</p>
-					)}
+					{description != null &&
+						description !== false &&
+						(typeof description === 'string' || typeof description === 'number' ? (
+							<p className={cn('text-muted text-sm', !cornerAbove && 'truncate')}>{description}</p>
+						) : (
+							<div className="min-w-0">{description}</div>
+						))}
 				</div>
 			</div>
 			{actions && <div className="flex items-center gap-2">{actions}</div>}

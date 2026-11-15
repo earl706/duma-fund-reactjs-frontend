@@ -20,8 +20,13 @@ import { Button, FadeIn, Input, LoadingScreen, Modal, Select } from '../ui';
 import { InlineMoneyInput, MoneyField } from './MoneyField';
 import { ScanPurchaseActions } from './PurchaseHint';
 import { ReceiptCropper } from './ReceiptCropper';
-import { CategoryMultiSelect, MAX_EXPENSE_CATEGORIES } from './CategoryMultiSelect';
-import { amountToneClass, formatSignedAmount } from './txnDisplay';
+import {
+	CategoryMultiSelect,
+	expenseCategoryOptions,
+	MAX_EXPENSE_CATEGORIES
+} from './CategoryMultiSelect';
+import { CostAmount } from './CostAmount';
+import { amountToneClass } from './txnDisplay';
 
 const ACCEPT_IMAGES = 'image/jpeg,image/png,image/webp,image/*';
 const TABLE_INPUT = 'border-line bg-surface text-fg w-full rounded-sm border px-2 py-1.5 text-sm';
@@ -77,9 +82,17 @@ function DraftTotals({ items, className }) {
 			{visible.map((item) => (
 				<p key={item.label} className="flex items-baseline gap-2">
 					<span className="text-muted text-[10px] font-semibold uppercase">{item.label}</span>
-					<span className={cn('text-sm font-semibold tabular-nums', amountToneClass(item.type))}>
-						{formatSignedAmount(item.amount, item.type)}
-					</span>
+					<CostAmount
+						value={item.amount}
+						prefix={
+							item.type === 'income' || item.type === 'transfer_in'
+								? '+'
+								: item.type === 'expense' || item.type === 'transfer_out'
+									? '−'
+									: ''
+						}
+						className={cn('text-sm font-semibold', amountToneClass(item.type))}
+					/>
 				</p>
 			))}
 		</div>
@@ -264,10 +277,7 @@ export function ReceiptImportModal({
 	const sources = sourcesData?.results || [];
 	const sourceOptions = sourceSelectOptions(sources);
 
-	const expenseOptions = useMemo(
-		() => categories.map((c) => ({ value: String(c.id), label: c.name })),
-		[categories]
-	);
+	const expenseOptions = useMemo(() => expenseCategoryOptions(categories), [categories]);
 
 	const currentDraft = drafts[reviewIndex] || null;
 	const previewUrl = useObjectUrl(currentDraft?.file);
@@ -936,7 +946,7 @@ function RetailDraftEditor({
 			</div>
 
 			<label className="block text-sm">
-				<span className="text-fg mb-1.5 block font-medium">Receipt categories</span>
+				<span className="text-fg mb-1.5 block font-medium">Receipt categories asdas</span>
 				<CategoryMultiSelect
 					options={expenseOptions}
 					value={effectiveHeaderIds}

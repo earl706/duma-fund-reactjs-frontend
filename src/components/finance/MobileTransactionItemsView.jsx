@@ -1,7 +1,8 @@
 import { Plus, ShoppingBag, Trash2 } from 'lucide-react';
 
-import { cn, formatCost } from '../../lib/format';
+import { cn } from '../../lib/format';
 import { Button, EmptyState } from '../ui';
+import { CostAmount } from './CostAmount';
 
 function formatQty(value) {
 	return Number(value ?? 0).toLocaleString(undefined, {
@@ -14,11 +15,10 @@ function lineTotal(item) {
 	return Number(item.cost || 0) * Number(item.quantity || 0);
 }
 
-function itemSubtitle(row) {
+function itemSubtitleParts(row) {
 	const qty = `${formatQty(row.quantity)} ${row.unit || 'pcs'}`;
-	const price = formatCost(row.cost);
 	const archived = row.status === 'archived' ? ' · Archived' : '';
-	return `${qty} · ${price}${archived}`;
+	return { qty, cost: row.cost, archived };
 }
 
 /**
@@ -63,11 +63,22 @@ export function MobileTransactionItemsView({
 					>
 						<div className="min-w-0 flex-1">
 							<p className="text-fg truncate text-[15px] font-medium">{row.title || 'Untitled'}</p>
-							<p className="text-muted mt-0.5 truncate text-xs">{itemSubtitle(row)}</p>
+							<p className="text-muted mt-0.5 truncate text-xs">
+								{(() => {
+									const parts = itemSubtitleParts(row);
+									return (
+										<>
+											{parts.qty} · <CostAmount value={parts.cost} className="text-muted" />
+											{parts.archived}
+										</>
+									);
+								})()}
+							</p>
 						</div>
-						<span className="text-fg shrink-0 text-[15px] font-semibold tabular-nums">
-							{formatCost(lineTotal(row))}
-						</span>
+						<CostAmount
+							value={lineTotal(row)}
+							className="text-fg shrink-0 text-[15px] font-semibold"
+						/>
 					</button>
 					{canEdit && onRequestDelete && (
 						<Button

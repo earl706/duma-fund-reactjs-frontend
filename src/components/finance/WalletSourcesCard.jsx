@@ -8,6 +8,7 @@ import { reassignAndDeleteSource, sourcesApi, useFinanceBalance } from '../../li
 import { toast } from '../../stores/toastStore';
 import { useCanEditLedger, useIsProfileOwner, useProfileStore } from '../../stores/profileStore';
 import { Button, Card, CardBody, CardHeader, Input, Modal, Select } from '../ui';
+import { CostAmount } from './CostAmount';
 import { MoneyField } from './MoneyField';
 import { MoveMoneyModal } from './MoveMoneyModal';
 
@@ -316,9 +317,7 @@ export function WalletSourcesCard() {
 											</p>
 											<p className="text-muted text-xs">{kindLabel(src.kind)}</p>
 										</div>
-										<p className="text-fg text-sm font-semibold tabular-nums">
-											{formatCost(src.balance)}
-										</p>
+										<CostAmount value={src.balance} className="text-fg text-sm font-semibold" />
 									</div>
 									<form
 										className="mt-3 flex flex-wrap items-end gap-2"

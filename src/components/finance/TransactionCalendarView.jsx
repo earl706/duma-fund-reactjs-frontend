@@ -1,8 +1,8 @@
 import { useMemo, useState } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 
-import { cn, formatCost } from '../../lib/format';
-import { Button, EmptyState, LoadingSwap } from '../ui';
+import { cn, costParts } from '../../lib/format';
+import { Button, EmptyState, LoadingSwap, Tooltip } from '../ui';
 import { LedgerAmount } from './txnDisplay';
 import { TransactionDayDetailBody, TransactionDayDetailModal } from './TransactionDayDetailModal';
 import {
@@ -47,12 +47,20 @@ function SegmentedToggle({ options, value, onChange, ariaLabel }) {
 	);
 }
 
-function formatNet(value) {
+function NetLabel({ value, className }) {
 	const amount = Number(value);
 	if (!Number.isFinite(amount) || amount === 0) return null;
-	const formatted = formatCost(Math.abs(amount));
-	if (formatted === '—') return null;
-	return amount > 0 ? `+${formatted}` : `−${formatted}`;
+	const { display, full, compact } = costParts(Math.abs(amount));
+	if (display === '—') return null;
+	const prefix = amount > 0 ? '+' : '−';
+	const label = (
+		<span className={cn('tabular-nums', className)}>
+			{prefix}
+			{display}
+		</span>
+	);
+	if (!compact) return label;
+	return <Tooltip content={`${prefix}${full}`}>{label}</Tooltip>;
 }
 
 function DayCell({ day, anchor, txns, compact, aggregateOnly, onOpen }) {
@@ -63,9 +71,8 @@ function DayCell({ day, anchor, txns, compact, aggregateOnly, onOpen }) {
 	const txnCount = txns?.length || 0;
 	const preview = aggregateOnly ? [] : latestPreview(txns);
 	const more = aggregateOnly ? 0 : Math.max(0, txnCount - preview.length);
-	const netLabel = formatNet(totals.net);
 	const countLabel = txnCount > 100 ? '99+' : String(txnCount);
-
+	const hasNet = Number.isFinite(Number(totals.net)) && Number(totals.net) !== 0;
 	return (
 		<button
 			type="button"
@@ -96,15 +103,14 @@ function DayCell({ day, anchor, txns, compact, aggregateOnly, onOpen }) {
 							</span>
 						) : null}
 					</div>
-					{netLabel ? (
-						<span
+					{hasNet ? (
+						<NetLabel
+							value={totals.net}
 							className={cn(
-								'w-full truncate text-[9px] leading-tight font-semibold tabular-nums',
+								'w-full truncate text-[9px] leading-tight font-semibold',
 								totals.net > 0 ? 'text-success' : 'text-danger'
 							)}
-						>
-							{netLabel}
-						</span>
+						/>
 					) : null}
 				</>
 			) : (
@@ -118,15 +124,14 @@ function DayCell({ day, anchor, txns, compact, aggregateOnly, onOpen }) {
 						>
 							{day.getDate()}
 						</span>
-						{netLabel ? (
-							<span
+						{hasNet ? (
+							<NetLabel
+								value={totals.net}
 								className={cn(
-									'truncate text-[10px] font-semibold tabular-nums',
+									'truncate text-[10px] font-semibold',
 									totals.net > 0 ? 'text-success' : 'text-danger'
 								)}
-							>
-								{netLabel}
-							</span>
+							/>
 						) : null}
 					</div>
 					<ul className={cn('min-h-0 flex-1 space-y-0.5 overflow-hidden', compact && 'max-h-16')}>

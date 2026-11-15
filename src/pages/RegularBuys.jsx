@@ -2,13 +2,14 @@ import { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { RefreshCw } from 'lucide-react';
 
-import { cn, formatCost } from '../lib/format';
+import { cn } from '../lib/format';
 import { usePurchaseActions, usePurchaseInsights } from '../lib/purchases';
 import { paginateClient } from '../hooks/useListControls';
 import { toast } from '../stores/toastStore';
 import { useIsProfileOwner } from '../stores/profileStore';
 import { PageHeader } from '../components/layout/PageHeader';
 import { StickyPageChrome } from '../components/layout/StickyPageChrome';
+import { CostAmount } from '../components/finance/CostAmount';
 import {
 	COMPARE_MODES,
 	PurchasePriceDetailModal
@@ -162,7 +163,7 @@ function ItemCard({ row, compareMode, onOpen, onMarkRegular }) {
 				{row.display_title}
 			</div>
 			<p className="text-fg flex flex-wrap items-baseline gap-x-2 text-sm tabular-nums">
-				<span className="font-medium">{formatCost(lastPrice)}</span>
+				<CostAmount value={lastPrice} className="font-medium" />
 				{delta ? (
 					<span className={cn('text-xs font-medium', delta.className)}>{delta.text}</span>
 				) : null}

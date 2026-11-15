@@ -7,7 +7,8 @@ import {
 	ShoppingBag
 } from 'lucide-react';
 
-import { cn, formatCost } from '../../lib/format';
+import { cn, costParts, formatCost, formatCostFull } from '../../lib/format';
+import { Tooltip } from '../ui/Tooltip';
 
 export const TYPE_ICON = {
 	expense: { Icon: ShoppingBag, wrap: 'bg-accent/15 text-accent' },
@@ -51,6 +52,13 @@ export function formatSignedAmount(amount, type, row) {
 	return `${inflow ? '+' : '−'}${formatted}`;
 }
 
+function signedFullAmount(amount, type) {
+	const full = formatCostFull(amount);
+	if (full === '—') return full;
+	const inflow = type === 'income' || type === 'transfer_in';
+	return `${inflow ? '+' : '−'}${full}`;
+}
+
 export function amountToneClass(type, row) {
 	if (isInternalTransfer(row)) return 'text-muted';
 	if (type === 'income' || type === 'transfer_in') return 'text-success';
@@ -61,36 +69,46 @@ export function amountToneClass(type, row) {
 /**
  * Ledger amount with dual tone for internal moves:
  * grey principal always; red `-fee` only when fee > 0.
+ * Compact values get a styled full-amount tooltip.
  */
 export function LedgerAmount({ amount, type, row, className, bold = false }) {
 	const weight = bold ? 'font-bold' : 'font-semibold';
 	if (isInternalTransfer(row)) {
 		const fee = internalFee(row);
-		const principal = fee > 0 ? formatMovePart(row.amount) : formatCost(row.amount);
-		const feeLabel = fee > 0 ? formatMovePart(fee) : null;
-		const title =
+		const principalParts = costParts(row.amount, { minCompact: fee > 0 ? 1000 : 10000 });
+		const feeParts = fee > 0 ? costParts(fee, { minCompact: 1000 }) : null;
+		const tip =
 			fee > 0
-				? `${formatCost(row.amount, { minCompact: Infinity })}-${formatCost(fee, { minCompact: Infinity })}`
-				: undefined;
-		return (
+				? `${formatCostFull(row.amount)}-${formatCostFull(fee)}`
+				: principalParts.compact
+					? formatCostFull(row.amount)
+					: null;
+		const body = (
 			<span
 				className={cn(
 					'inline-flex max-w-full items-baseline whitespace-nowrap tabular-nums',
 					weight,
 					className
 				)}
-				title={title}
 			>
-				<span className="text-muted">{principal}</span>
-				{feeLabel && feeLabel !== '—' ? <span className="text-danger">-{feeLabel}</span> : null}
+				<span className="text-muted">{principalParts.display}</span>
+				{feeParts && feeParts.display !== '—' ? (
+					<span className="text-danger">-{feeParts.display}</span>
+				) : null}
 			</span>
 		);
+		if (!tip) return body;
+		return <Tooltip content={tip}>{body}</Tooltip>;
 	}
-	return (
+	const display = formatSignedAmount(amount, type, row);
+	const tip = costParts(amount).compact && display !== '—' ? signedFullAmount(amount, type) : null;
+	const body = (
 		<span className={cn('tabular-nums', weight, amountToneClass(type, row), className)}>
-			{formatSignedAmount(amount, type, row)}
+			{display}
 		</span>
 	);
+	if (!tip) return body;
+	return <Tooltip content={tip}>{body}</Tooltip>;
 }
 
 export function TypeGlyph({ type, size = 18, className }) {

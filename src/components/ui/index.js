@@ -16,3 +16,4 @@ export { DataSheet } from './DataSheet';
 export { RecordInfoModal } from './RecordInfoModal';
 export { AppIcon, ICON_SRC } from './AppIcon';
 export { IconChoice } from './IconChoice';
+export { Tooltip } from './Tooltip';

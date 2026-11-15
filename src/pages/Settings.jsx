@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useMutation } from '@tanstack/react-query';
 import {
+	AlertTriangle,
 	Calculator,
 	Check,
 	LogOut,
@@ -47,6 +48,13 @@ const PROVIDER_LABELS = {
 	gemini: 'Gemini',
 	groq: 'Groq',
 	openrouter: 'OpenRouter'
+};
+
+const PROVIDER_KEY_URLS = {
+	openai: 'https://platform.openai.com/api-keys',
+	gemini: 'https://aistudio.google.com/apikey',
+	groq: 'https://console.groq.com/keys',
+	openrouter: 'https://openrouter.ai/settings/keys'
 };
 
 const PROVIDER_FORMS = {
@@ -477,29 +485,78 @@ export default function SettingsPage() {
 								const keyHint = llm[form.keyHint];
 								const save = llm[form.setter];
 								const label = PROVIDER_LABELS[provider] || 'provider';
+								const maskedKey =
+									keySet && keyHint ? `${'•'.repeat(12)}${keyHint}` : keySet ? '•'.repeat(16) : '';
+								const showingMask = keySet && keyDraft == null;
+								const replacePending = keySet && keyDraft != null && Boolean(keyDraft.trim());
+								const saveNewKey = async () => {
+									const next = (keyDraft || '').trim();
+									if (!next) return;
+									try {
+										await save({ apiKey: next });
+										setKeyDraft(null);
+										toast.success(form.success);
+									} catch {
+										toast.error(form.keyError);
+									}
+								};
 								return (
 									<>
-										<Input
-											label={form.keyLabel}
-											type="password"
-											autoComplete="new-password"
-											name={form.keyName}
-											value={keyDraft != null ? keyDraft : ''}
-											onChange={(e) => setKeyDraft(e.target.value)}
-											onBlur={async () => {
-												if (keyDraft == null) return;
-												const next = keyDraft.trim();
-												setKeyDraft(null);
-												if (!next) return;
-												try {
-													await save({ apiKey: next });
-													toast.success(form.success);
-												} catch {
-													toast.error(form.keyError);
+										<div className="space-y-1.5">
+											<Input
+												label={form.keyLabel}
+												type={showingMask ? 'text' : 'password'}
+												autoComplete="new-password"
+												name={form.keyName}
+												spellCheck={false}
+												value={showingMask ? maskedKey : keyDraft != null ? keyDraft : ''}
+												onFocus={() => {
+													if (showingMask) setKeyDraft('');
+												}}
+												onChange={(e) => setKeyDraft(e.target.value)}
+												onBlur={async () => {
+													if (keyDraft == null) return;
+													const next = keyDraft.trim();
+													if (!next) {
+														setKeyDraft(null);
+														return;
+													}
+													if (keySet) return;
+													await saveNewKey();
+												}}
+												placeholder={form.keyPlaceholder}
+												className={
+													showingMask
+														? 'border-primary/50 text-fg font-medium tracking-wide'
+														: undefined
 												}
-											}}
-											placeholder={keySet && keyHint ? `••••${keyHint}` : form.keyPlaceholder}
-										/>
+											/>
+											{replacePending ? (
+												<div className="bg-warning/10 text-warning flex items-start gap-2 rounded-md px-2.5 py-2 text-xs">
+													<AlertTriangle
+														size={14}
+														strokeWidth={2.25}
+														className="mt-0.5 shrink-0"
+														aria-hidden
+													/>
+													<div className="min-w-0 flex-1 space-y-2">
+														<p>
+															This will replace your saved {label} API key. Confirm to apply the new
+															value.
+														</p>
+														<Button
+															type="button"
+															variant="secondary"
+															size="sm"
+															className="w-full sm:w-auto"
+															onClick={saveNewKey}
+														>
+															Replace key
+														</Button>
+													</div>
+												</div>
+											) : null}
+										</div>
 										<Input
 											label={form.modelLabel}
 											value={modelDraft != null ? modelDraft : savedModel}
@@ -537,6 +594,14 @@ export default function SettingsPage() {
 										>
 											Clear {label} key
 										</Button>
+										<a
+											href={PROVIDER_KEY_URLS[provider]}
+											target="_blank"
+											rel="noopener noreferrer"
+											className="text-muted hover:text-fg block text-center text-xs underline-offset-2 hover:underline"
+										>
+											Find your key in the {label} dashboard →
+										</a>
 									</>
 								);
 							})()}

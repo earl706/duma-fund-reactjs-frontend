@@ -5,6 +5,7 @@ import { formatCost, formatDateShort, parseDateShort } from '../../lib/format';
 import { post } from '../../lib/api';
 import { toast } from '../../stores/toastStore';
 import { Button, Input, Modal, Select } from '../ui';
+import { CostAmount } from './CostAmount';
 import { MoneyField } from './MoneyField';
 
 function todayShort() {
@@ -194,9 +195,13 @@ export function MoveMoneyModal({ open, onClose, sources = [], defaultFromId }) {
 						placeholder="Optional"
 					/>
 
-					<p className="text-muted text-xs leading-relaxed">
-						{fromSrc?.name || 'From'} −{formatCost(debit)} · {toSrc?.name || 'To'} +
-						{formatCost(principal)} · Profile −{formatCost(feeNum)}
+					<p className="text-muted inline-flex flex-wrap items-baseline gap-x-1 text-xs leading-relaxed">
+						<span>{fromSrc?.name || 'From'}</span>
+						<CostAmount value={debit} prefix="−" className="text-muted" />
+						<span>· {toSrc?.name || 'To'}</span>
+						<CostAmount value={principal} prefix="+" className="text-muted" />
+						<span>· Profile</span>
+						<CostAmount value={feeNum} prefix="−" className="text-muted" />
 					</p>
 
 					{error && (

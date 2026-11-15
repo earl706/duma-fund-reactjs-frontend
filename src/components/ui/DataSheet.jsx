@@ -5,12 +5,13 @@ import { CopyPlus, ExternalLink, Info, Plus, Trash2 } from 'lucide-react';
 
 import { Spinner } from './feedback';
 
-import { cn, formatCost } from '../../lib/format';
+import { cn, costParts } from '../../lib/format';
 import { CategoryMultiSelect } from '../finance/CategoryMultiSelect';
 import { InlineMoneyInput } from '../finance/MoneyField';
 import { PurchaseHint } from '../finance/PurchaseHint';
 import { Button } from './Button';
 import { Select } from './Field';
+import { Tooltip } from './Tooltip';
 
 const STATUS_DOT = {
 	active: 'bg-primary',
@@ -44,11 +45,15 @@ function selectionCashFlow(rows, selectedIds) {
 	return Math.round(net * 100) / 100;
 }
 
-function formatSelectionNet(net) {
-	const formatted = formatCost(Math.abs(net));
-	if (formatted === '—') return formatted;
-	if (net === 0) return formatted;
-	return `${net > 0 ? '+' : '−'}${formatted}`;
+function selectionNetParts(net) {
+	const { display, full, compact } = costParts(Math.abs(net));
+	if (display === '—') return { display, tip: null };
+	if (net === 0) return { display, tip: compact ? full : null };
+	const prefix = net > 0 ? '+' : '−';
+	return {
+		display: `${prefix}${display}`,
+		tip: compact ? `${prefix}${full}` : null
+	};
 }
 
 function selectionNetTone(net) {
@@ -65,6 +70,43 @@ function StatusDot({ status }) {
 			title={status ? status.charAt(0).toUpperCase() + status.slice(1) : 'Unknown'}
 			aria-label={status || 'unknown'}
 		/>
+	);
+}
+
+/** Fill handle outside cell overflow (truncate / sheet overflow-hidden). */
+function FillHandlePortal({ anchorEl, onMouseDown }) {
+	const [coords, setCoords] = useState(null);
+
+	useLayoutEffect(() => {
+		if (!anchorEl) {
+			setCoords(null);
+			return;
+		}
+		const update = () => {
+			const rect = anchorEl.getBoundingClientRect();
+			setCoords({ top: rect.bottom, left: rect.right });
+		};
+		update();
+		window.addEventListener('scroll', update, true);
+		window.addEventListener('resize', update);
+		return () => {
+			window.removeEventListener('scroll', update, true);
+			window.removeEventListener('resize', update);
+		};
+	}, [anchorEl]);
+
+	if (!coords) return null;
+	return createPortal(
+		<span
+			role="button"
+			tabIndex={-1}
+			style={{ top: coords.top, left: coords.left }}
+			className="border-primary bg-primary fixed z-[70] h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 cursor-crosshair rounded-full border-2"
+			title="Drag to fill cells below"
+			aria-label="Fill handle"
+			onMouseDown={onMouseDown}
+		/>,
+		document.body
 	);
 }
 
@@ -282,11 +324,13 @@ export function DataSheet({
 	const [draft, setDraft] = useState('');
 	const [draftUnit, setDraftUnit] = useState('');
 	const [selectedIds, setSelectedIds] = useState(() => new Set());
+	const selectionAnchorRef = useRef(null);
 	const [cellAnchor, setCellAnchor] = useState(null);
 	const [cellFocus, setCellFocus] = useState(null);
 	const [fillPreviewEnd, setFillPreviewEnd] = useState(null);
 	const sheetRootRef = useRef(null);
 	const [isFillDragging, setIsFillDragging] = useState(false);
+	const [fillHandleEl, setFillHandleEl] = useState(null);
 	const [overlayAnchor, setOverlayAnchor] = useState(null);
 	const inputRef = useRef(null);
 	const editorRef = useRef(null);
@@ -416,8 +460,21 @@ export function DataSheet({
 	const someSelected = rows.some((r) => selectedIds.has(r.id));
 	const selectedNet = useMemo(() => selectionCashFlow(rows, selectedIds), [rows, selectedIds]);
 
-	const toggleRow = (id) => {
+	const toggleRow = (id, { shiftKey = false } = {}) => {
 		setSelectedIds((prev) => {
+			const ids = rows.map((r) => r.id);
+			if (shiftKey && selectionAnchorRef.current != null) {
+				const a = ids.indexOf(selectionAnchorRef.current);
+				const b = ids.indexOf(id);
+				if (a >= 0 && b >= 0) {
+					const lo = Math.min(a, b);
+					const hi = Math.max(a, b);
+					const next = new Set(prev);
+					for (const rowId of ids.slice(lo, hi + 1)) next.add(rowId);
+					return next;
+				}
+			}
+			selectionAnchorRef.current = id;
 			const next = new Set(prev);
 			if (next.has(id)) next.delete(id);
 			else next.add(id);
@@ -427,9 +484,11 @@ export function DataSheet({
 
 	const toggleAll = () => {
 		if (allSelected) {
+			selectionAnchorRef.current = null;
 			setSelectedIds(new Set());
 			return;
 		}
+		selectionAnchorRef.current = rows[0]?.id ?? null;
 		setSelectedIds(new Set(rows.map((r) => r.id)));
 	};
 
@@ -764,8 +823,8 @@ export function DataSheet({
 
 	const cellText = compact ? 'text-xs' : 'text-sm';
 	const headText = compact ? 'text-[10px]' : 'text-xs';
-	const cellPad = compact ? 'px-1.5 py-1' : 'px-2 py-2';
-	const headPad = compact ? 'px-1.5 py-1.5' : 'px-2 py-2';
+	const cellPad = compact ? 'px-1.5 py-0.5' : 'px-2 py-2';
+	const headPad = compact ? 'px-1.5 py-1' : 'px-2 py-2';
 
 	const renderActions = (row, col) => {
 		const actions = col.actions || (col.type === 'action-delete' ? ['delete'] : []);
@@ -816,18 +875,31 @@ export function DataSheet({
 	const showFillHandle =
 		fillHandleCell && fillHandleCell.rowId === rows[cellSelection?.maxRow ?? -1]?.id && !edit;
 
+	useLayoutEffect(() => {
+		if (!showFillHandle) setFillHandleEl(null);
+	}, [showFillHandle, fillHandleCell?.rowId, fillHandleCell?.colKey]);
+
 	return (
 		<div ref={sheetRootRef} className="border-line bg-surface overflow-hidden rounded-md border">
 			{sheetSelectable && selectedIds.size > 0 && (
 				<div className="border-line bg-surface-2 flex flex-wrap items-center gap-2 border-b px-2 py-1.5">
 					<span className={cn('text-muted', cellText)}>{selectedIds.size} selected</span>
-					{selectedNet != null && (
-						<span
-							className={cn('font-semibold tabular-nums', cellText, selectionNetTone(selectedNet))}
-						>
-							{formatSelectionNet(selectedNet)}
-						</span>
-					)}
+					{selectedNet != null &&
+						(() => {
+							const net = selectionNetParts(selectedNet);
+							const label = (
+								<span
+									className={cn(
+										'font-semibold tabular-nums',
+										cellText,
+										selectionNetTone(selectedNet)
+									)}
+								>
+									{net.display}
+								</span>
+							);
+							return net.tip ? <Tooltip content={net.tip}>{label}</Tooltip> : label;
+						})()}
 					{onBulkDelete && (
 						<Button
 							variant="danger"
@@ -842,7 +914,10 @@ export function DataSheet({
 						variant="ghost"
 						size="sm"
 						className="text-muted h-7 text-xs"
-						onClick={() => setSelectedIds(new Set())}
+						onClick={() => {
+							selectionAnchorRef.current = null;
+							setSelectedIds(new Set());
+						}}
 					>
 						Clear
 					</Button>
@@ -944,7 +1019,7 @@ export function DataSheet({
 											<input
 												type="checkbox"
 												className="accent-primary h-3.5 w-3.5 cursor-pointer"
-												onChange={() => toggleRow(row.id)}
+												onChange={(e) => toggleRow(row.id, { shiftKey: e.nativeEvent.shiftKey })}
 												checked={selected}
 												aria-label={`Select ${rowLabel(row)}`}
 											/>
@@ -1053,6 +1128,7 @@ export function DataSheet({
 															>
 																<CategoryMultiSelect
 																	className="min-h-0 flex-1"
+																	gridClassName="max-h-48"
 																	options={(col.expenseOptions || col.options || []).map((o) => o)}
 																	max={col.maxSelections || 5}
 																	value={(() => {
@@ -1207,11 +1283,13 @@ export function DataSheet({
 										return (
 											<td
 												key={col.key}
+												ref={hasFillHandle && !cellPending ? setFillHandleEl : undefined}
 												aria-busy={cellPending || undefined}
 												className={cn(
 													'text-fg transition-opacity duration-200 select-none',
-													allowTruncate && !cornerBadge && 'truncate',
-													(hasFillHandle || cellPending || cornerBadge) && 'relative',
+													// truncate → overflow:hidden clips the fill handle; keep ellipsis on inner span
+													allowTruncate && !cornerBadge && !hasFillHandle && 'truncate',
+													(cellPending || cornerBadge) && 'relative',
 													cellPad,
 													col.align === 'right' && 'text-right tabular-nums',
 													isFillableCell(col) && !cellPending && 'hover:bg-primary/5 cursor-cell',
@@ -1244,16 +1322,6 @@ export function DataSheet({
 													</span>
 												</span>
 												{cornerBadge}
-												{hasFillHandle && !cellPending && (
-													<span
-														role="button"
-														tabIndex={-1}
-														className="border-primary bg-primary absolute right-0 bottom-0 z-10 h-2.5 w-2.5 translate-x-1/2 translate-y-1/2 cursor-crosshair rounded-full border-2"
-														title="Drag to fill cells below"
-														aria-label="Fill handle"
-														onMouseDown={startFillDrag}
-													/>
-												)}
 											</td>
 										);
 									})}
@@ -1277,6 +1345,9 @@ export function DataSheet({
 					</Button>
 				</div>
 			)}
+			{showFillHandle ? (
+				<FillHandlePortal anchorEl={fillHandleEl} onMouseDown={startFillDrag} />
+			) : null}
 		</div>
 	);
 }

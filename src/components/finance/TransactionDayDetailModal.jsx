@@ -3,6 +3,7 @@ import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxi
 
 import { cn, formatCost, formatDate } from '../../lib/format';
 import { Button, EmptyState, Modal } from '../ui';
+import { CostAmount } from './CostAmount';
 import { LedgerAmount } from './txnDisplay';
 import { dayTotals, hourSeries } from './transactionCalendar';
 
@@ -14,16 +15,6 @@ function tooltipStyle() {
 		color: 'var(--fg)',
 		fontSize: 12
 	};
-}
-
-function formatNet(value) {
-	const amount = Number(value);
-	if (!Number.isFinite(amount)) return '—';
-	const formatted = formatCost(Math.abs(amount));
-	if (formatted === '—') return formatted;
-	if (amount > 0) return `+${formatted}`;
-	if (amount < 0) return `−${formatted}`;
-	return formatted;
 }
 
 function netToneClass(value) {
@@ -103,12 +94,30 @@ export function TransactionDayDetailBody({ dateISO, transactions, onNavigate }) 
 					<div>
 						<p className="text-muted text-xs font-medium tracking-wide uppercase">Net</p>
 						<p className={cn('text-xl font-semibold tabular-nums', netToneClass(totals.net))}>
-							{formatNet(totals.net)}
+							{Number(totals.net) > 0 ? (
+								<CostAmount
+									value={Math.abs(totals.net)}
+									prefix="+"
+									className={cn('font-semibold', netToneClass(totals.net))}
+								/>
+							) : Number(totals.net) < 0 ? (
+								<CostAmount
+									value={Math.abs(totals.net)}
+									prefix="−"
+									className={cn('font-semibold', netToneClass(totals.net))}
+								/>
+							) : (
+								<CostAmount value={0} className={cn('font-semibold', netToneClass(totals.net))} />
+							)}
 						</p>
 						<p className="text-muted mt-1 text-xs">
-							<span className="text-success">In {formatCost(totals.moneyIn)}</span>
+							<span className="text-success">
+								In <CostAmount value={totals.moneyIn} className="text-success" />
+							</span>
 							<span className="mx-1.5">·</span>
-							<span className="text-danger">Out {formatCost(totals.moneyOut)}</span>
+							<span className="text-danger">
+								Out <CostAmount value={totals.moneyOut} className="text-danger" />
+							</span>
 						</p>
 					</div>
 					<p className="text-muted pt-1 text-sm font-medium">{label}</p>

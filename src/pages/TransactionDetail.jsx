@@ -1,23 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import {
-	ArrowLeft,
-	ArrowLeftRight,
-	Car,
-	Clapperboard,
-	HeartPulse,
-	Home,
-	ImageDown,
-	MoreHorizontal,
-	Plus,
-	ScanLine,
-	ShoppingBag,
-	Star,
-	Tag,
-	UtensilsCrossed,
-	Zap
-} from 'lucide-react';
+import { ArrowLeft, ArrowLeftRight, ImageDown, Plus, ScanLine, ShoppingBag } from 'lucide-react';
 
 import { sourceSelectOptions } from '../lib/balanceSources';
 import { categoriesApi, sourcesApi, transactionItemsApi, transactionsApi } from '../lib/resources';
@@ -26,7 +10,8 @@ import { fetchAllPages } from '../lib/fetchAll';
 import { useMobileLayout } from '../hooks/useMobileLayout';
 import { mediaUrl } from '../lib/receiptScan';
 import { STATUS_TONE } from '../lib/status';
-import { cn, formatCost, formatDate } from '../lib/format';
+import { cn, formatDate } from '../lib/format';
+import { CostAmount } from '../components/finance/CostAmount';
 import {
 	canShareImageFile,
 	canvasToBlob,
@@ -41,7 +26,10 @@ import { useActiveProfileId, useCanEditLedger } from '../stores/profileStore';
 import { useListControls } from '../hooks/useListControls';
 import { GroceryExportModal } from '../components/costs/GroceryExportModal';
 import { ReceiptImportModal } from '../components/finance/ReceiptImportModal';
-import { MAX_EXPENSE_CATEGORIES } from '../components/finance/CategoryMultiSelect';
+import {
+	CategoryMultiSelect,
+	expenseCategoryOptions
+} from '../components/finance/CategoryMultiSelect';
 import { MobileTransactionItemEditModal } from '../components/finance/MobileTransactionItemEditModal';
 import { MobileTransactionItemsView } from '../components/finance/MobileTransactionItemsView';
 import { PageHeader } from '../components/layout/PageHeader';
@@ -51,7 +39,6 @@ import {
 	Button,
 	DataSheet,
 	EmptyState,
-	IconChoice,
 	ListToolbar,
 	FadeIn,
 	LoadingScreen,
@@ -81,23 +68,6 @@ const UNIT_OPTIONS = [
 	{ value: 'L', label: 'L' },
 	{ value: 'mL', label: 'mL' }
 ];
-
-/** Icons for system expense seeds (exact name). Custom / renamed → Tag. */
-const EXPENSE_SEED_ICONS = {
-	Food: UtensilsCrossed,
-	Transport: Car,
-	Housing: Home,
-	Utilities: Zap,
-	Health: HeartPulse,
-	Entertainment: Clapperboard,
-	Shopping: ShoppingBag,
-	Other: MoreHorizontal
-};
-
-function categoryChoiceIcon(category) {
-	if (!category?.is_system) return Tag;
-	return EXPENSE_SEED_ICONS[category.name] || Tag;
-}
 
 function todayISO() {
 	const d = new Date();
@@ -144,12 +114,7 @@ export default function TransactionDetailPage() {
 		expenseCategories[0]?.id;
 
 	const categoryOptions = useMemo(
-		() =>
-			expenseCategories.map((c) => ({
-				value: String(c.id),
-				label: c.name,
-				icon: categoryChoiceIcon(c)
-			})),
+		() => expenseCategoryOptions(expenseCategories),
 		[expenseCategories]
 	);
 
@@ -304,34 +269,6 @@ export default function TransactionDetailPage() {
 		);
 	};
 
-	const toggleHeaderCategory = (id) => {
-		if (!canEdit || updateTxn.isPending) return;
-		const selected = displayCategoryIds.map(Number);
-		const primary = displayPrimary != null ? Number(displayPrimary) : (selected[0] ?? null);
-		const n = Number(id);
-		if (selected.includes(n)) {
-			if (selected.length <= 1) return;
-			const ids = selected.filter((x) => x !== n);
-			persistHeaderCategories({
-				ids,
-				primaryId: primary === n ? (ids[0] ?? null) : primary
-			});
-		} else if (selected.length < MAX_EXPENSE_CATEGORIES) {
-			persistHeaderCategories({ ids: [...selected, n], primaryId: primary ?? n });
-		}
-	};
-
-	const setHeaderPrimary = (id) => {
-		if (!canEdit || updateTxn.isPending) return;
-		const selected = displayCategoryIds.map(Number);
-		const n = Number(id);
-		if (!selected.includes(n)) return;
-		persistHeaderCategories({
-			ids: [n, ...selected.filter((x) => x !== n)],
-			primaryId: n
-		});
-	};
-
 	const columns = useMemo(
 		() => [
 			{
@@ -349,7 +286,7 @@ export default function TransactionDetailPage() {
 				align: 'right',
 				inputType: 'number',
 				className: 'w-[12%]',
-				getDisplay: (row) => formatCost(row.cost),
+				getDisplay: (row) => <CostAmount value={row.cost} />,
 				getDraft: (row) => String(row.cost ?? '')
 			},
 			{
@@ -370,7 +307,7 @@ export default function TransactionDetailPage() {
 				label: 'Total',
 				align: 'right',
 				className: 'w-[12%]',
-				getDisplay: (row) => formatCost(lineTotal(row))
+				getDisplay: (row) => <CostAmount value={lineTotal(row)} />
 			},
 			{
 				key: 'status',
@@ -446,13 +383,16 @@ export default function TransactionDetailPage() {
 					<PageHeader
 						title={txn.title || 'Untitled'}
 						icon={ArrowLeftRight}
-						description={`${txn.type} · ${formatCost(txn.amount)}${
-							txn.date_effective ? ` · ${formatDate(txn.date_effective)}` : ''
-						}${
-							sources.find((s) => s.id === txn.source)
-								? ` · ${sources.find((s) => s.id === txn.source).name}`
-								: ''
-						}`}
+						description={
+							<span className="text-muted inline-flex flex-wrap items-baseline gap-x-1 text-sm">
+								<span>{txn.type} ·</span>
+								<CostAmount value={txn.amount} className="text-muted" />
+								{txn.date_effective ? <span>· {formatDate(txn.date_effective)}</span> : null}
+								{sources.find((s) => s.id === txn.source) ? (
+									<span>· {sources.find((s) => s.id === txn.source).name}</span>
+								) : null}
+							</span>
+						}
 						className="mb-0"
 						actions={
 							isExpense ? (
@@ -557,68 +497,13 @@ export default function TransactionDetailPage() {
 							<div>
 								<span className="text-fg text-sm font-medium">Categories</span>
 							</div>
-							<div
-								className={cn(
-									'grid grid-cols-4 gap-1.5 md:grid-cols-8',
-									(!canEdit || updateTxn.isPending) && 'pointer-events-none opacity-60'
-								)}
-								role="group"
-								aria-label="Expense categories"
-							>
-								{categoryOptions.length === 0 ? (
-									<p className="text-muted col-span-4 px-0.5 py-1 text-xs md:col-span-8">
-										No expense categories.
-									</p>
-								) : (
-									categoryOptions.map((opt) => {
-										const id = Number(opt.value);
-										const checked = displayCategoryIds.map(Number).includes(id);
-										const isPrimary = checked && Number(displayPrimary) === id;
-										const atCap = !checked && displayCategoryIds.length >= MAX_EXPENSE_CATEGORIES;
-										return (
-											<div
-												key={opt.value}
-												className={cn(
-													'relative flex min-w-0 flex-col items-center',
-													checked && 'bg-primary/8 rounded-md'
-												)}
-											>
-												<IconChoice
-													icon={opt.icon || Tag}
-													label={opt.label}
-													selected={checked}
-													disabled={!canEdit || updateTxn.isPending || atCap}
-													onClick={() => toggleHeaderCategory(id)}
-													ariaLabel={
-														checked
-															? `Deselect category ${opt.label}`
-															: `Select category ${opt.label}`
-													}
-												/>
-												{checked && (
-													<button
-														type="button"
-														className={cn(
-															'absolute top-0.5 right-0.5 cursor-pointer rounded p-0.5',
-															'text-muted hover:text-primary',
-															'focus-visible:outline-primary focus-visible:outline-2 focus-visible:outline-offset-1',
-															isPrimary && 'text-primary'
-														)}
-														title={isPrimary ? 'Primary category' : 'Set as primary'}
-														aria-label={
-															isPrimary ? 'Primary category' : `Set ${opt.label} as primary`
-														}
-														disabled={!canEdit || updateTxn.isPending}
-														onClick={() => setHeaderPrimary(id)}
-													>
-														<Star size={11} fill={isPrimary ? 'currentColor' : 'none'} />
-													</button>
-												)}
-											</div>
-										);
-									})
-								)}
-							</div>
+							<CategoryMultiSelect
+								options={categoryOptions}
+								value={displayCategoryIds}
+								primaryId={displayPrimary}
+								disabled={!canEdit || updateTxn.isPending}
+								onChange={persistHeaderCategories}
+							/>
 						</div>
 					</div>
 				)}
@@ -773,12 +658,12 @@ export default function TransactionDetailPage() {
 						infoTarget
 							? [
 									{ label: 'Title', value: infoTarget.title },
-									{ label: 'Price', value: formatCost(infoTarget.cost) },
+									{ label: 'Price', value: <CostAmount value={infoTarget.cost} /> },
 									{
 										label: 'Quantity',
 										value: `${formatQty(infoTarget.quantity)} ${infoTarget.unit || 'pcs'}`
 									},
-									{ label: 'Line total', value: formatCost(lineTotal(infoTarget)) },
+									{ label: 'Line total', value: <CostAmount value={lineTotal(infoTarget)} /> },
 									{
 										label: 'Status',
 										value: (

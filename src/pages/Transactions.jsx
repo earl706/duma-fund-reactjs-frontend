@@ -11,7 +11,8 @@ import { useMobileLayout } from '../hooks/useMobileLayout';
 import { downloadBlob } from '../lib/groceryReceipt';
 import { firstCommittedTransactionId, mediaUrl } from '../lib/receiptScan';
 import { STATUS_TONE } from '../lib/status';
-import { cn, formatCost, formatDateShort, hasUpcomingBalance, parseDateShort } from '../lib/format';
+import { cn, formatDateLong, hasUpcomingBalance, parseDateShort } from '../lib/format';
+import { CostAmount } from '../components/finance/CostAmount';
 import {
 	categoryPath,
 	defaultCategoryId,
@@ -40,6 +41,7 @@ import {
 	visibleRange
 } from '../components/finance/transactionCalendar';
 import {
+	expenseCategoryOptions,
 	formatCategoryTags,
 	MAX_EXPENSE_CATEGORIES
 } from '../components/finance/CategoryMultiSelect';
@@ -174,7 +176,7 @@ export default function TransactionsPage() {
 		incomeCategories.find((c) => c.name === 'Other' && !c.parent)?.id || incomeCategories[0]?.id;
 
 	const expenseSelectOptions = useMemo(
-		() => expenseCategories.map((c) => ({ value: String(c.id), label: c.name })),
+		() => expenseCategoryOptions(expenseCategories),
 		[expenseCategories]
 	);
 	const incomeSelectOptions = useMemo(
@@ -639,7 +641,7 @@ export default function TransactionsPage() {
 		if (Object.prototype.hasOwnProperty.call(body, 'date_effective')) {
 			const iso = parseDateShort(body.date_effective);
 			if (!iso) {
-				toast.error('Use date format DD/MM/YY.');
+				toast.error('Pick a valid date.');
 				return;
 			}
 			body.date_effective = iso;
@@ -822,11 +824,11 @@ export default function TransactionsPage() {
 				key: 'date_effective',
 				label: 'Effective',
 				editable: true,
-				inputType: 'text',
+				inputType: 'date',
 				required: true,
-				className: 'w-[11%]',
-				getDisplay: (row) => (row.date_effective ? formatDateShort(row.date_effective) : '—'),
-				getDraft: (row) => (row.date_effective ? formatDateShort(row.date_effective) : '')
+				className: 'w-[12%]',
+				getDisplay: (row) => (row.date_effective ? formatDateLong(row.date_effective) : '—'),
+				getDraft: (row) => row.date_effective || ''
 			},
 			{
 				key: 'actions',
@@ -1046,16 +1048,24 @@ export default function TransactionsPage() {
 					title="Transactions"
 					icon={ArrowLeftRight}
 					description={
-						balance
-							? [
-									`Balance ${formatCost(balance.balance)}`,
-									hasUpcomingBalance(balance)
-										? `Projected ${formatCost(balance.projected_balance)}`
-										: null
-								]
-									.filter(Boolean)
-									.join(' · ')
-							: 'Income, expenses, and transfers.'
+						balance ? (
+							<span className="text-fg mt-0.5 flex flex-col items-start gap-0.5 tabular-nums">
+								<span className="text-2xl font-bold tracking-tight sm:text-3xl">
+									Balance <CostAmount value={balance.balance} className="text-fg font-bold" />
+								</span>
+								{hasUpcomingBalance(balance) ? (
+									<span className="text-muted text-sm font-semibold sm:text-base">
+										Projected{' '}
+										<CostAmount
+											value={balance.projected_balance}
+											className="text-muted font-semibold"
+										/>
+									</span>
+								) : null}
+							</span>
+						) : (
+							'Income, expenses, and transfers.'
+						)
 					}
 					className="mb-0"
 					settingsShortcut

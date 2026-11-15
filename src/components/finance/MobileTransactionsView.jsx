@@ -10,11 +10,12 @@ import {
 	Trash2
 } from 'lucide-react';
 
-import { cn, formatCost, formatDate, hasUpcomingBalance } from '../../lib/format';
+import { cn, formatDate, hasUpcomingBalance } from '../../lib/format';
 import { useProfileStore } from '../../stores/profileStore';
 import { StickyPageChrome } from '../layout/StickyPageChrome';
 import { Button, EmptyState, LoadingSwap, Modal } from '../ui';
 import { AuthorChip } from './AuthorChip';
+import { CostAmount } from './CostAmount';
 import { LedgerAmount, PartialReceiptMark, TypeGlyph } from './txnDisplay';
 
 const TYPE_FILTER = [
@@ -156,11 +157,19 @@ export function MobileTransactionsView({
 					<div className="min-w-0">
 						<p className="text-muted text-sm font-medium">Current balance</p>
 						<p className="text-fg mt-1 text-[2.15rem] leading-none font-semibold tracking-tight tabular-nums">
-							{balance ? formatCost(balance.balance) : '—'}
+							{balance ? (
+								<CostAmount value={balance.balance} className="text-fg font-semibold" />
+							) : (
+								'—'
+							)}
 						</p>
 						{hasUpcomingBalance(balance) && (
 							<p className="text-muted mt-1.5 text-sm font-semibold tabular-nums">
-								Projected {formatCost(balance.projected_balance)}
+								Projected{' '}
+								<CostAmount
+									value={balance.projected_balance}
+									className="text-muted font-semibold"
+								/>
 							</p>
 						)}
 					</div>

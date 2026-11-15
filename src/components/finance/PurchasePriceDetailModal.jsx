@@ -6,6 +6,7 @@ import { format, parseISO, startOfMonth, startOfWeek } from 'date-fns';
 import { cn, formatCost, formatDateShort } from '../../lib/format';
 import { usePurchaseHistory } from '../../lib/purchases';
 import { Button, EmptyState, LoadingSwap, Modal } from '../ui';
+import { CostAmount } from './CostAmount';
 import { priceDeltaParts } from './purchasePriceDelta';
 
 const GRAINS = [
@@ -195,7 +196,7 @@ export function PurchasePriceDetailModal({
 							<div>
 								<p className="text-muted text-xs font-medium tracking-wide uppercase">Last price</p>
 								<p className="text-fg flex flex-wrap items-baseline gap-x-2 text-xl font-semibold tabular-nums">
-									<span>{formatCost(lastPrice)}</span>
+									<CostAmount value={lastPrice} className="font-semibold" />
 									{delta ? (
 										<span className={cn('text-sm font-medium', delta.className)}>{delta.text}</span>
 									) : null}

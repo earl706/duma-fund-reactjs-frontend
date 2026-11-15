@@ -22,6 +22,18 @@ export function formatDateShort(value) {
 	return formatDate(value, 'dd/MM/yy');
 }
 
+/**
+ * Readable ledger date: `MMM d` in the current year, else `MMM d, yyyy`
+ * (e.g. Nov 1 · Oct 27, 2027).
+ */
+export function formatDateLong(value) {
+	if (!value) return '';
+	const date = typeof value === 'string' ? parseISO(value) : value;
+	if (!isValid(date)) return '';
+	const sameYear = date.getFullYear() === new Date().getFullYear();
+	return format(date, sameYear ? 'MMM d' : 'MMM d, yyyy');
+}
+
 const DATE_SHORT_PATTERNS = ['dd/MM/yy', 'dd/MM/yyyy', 'd/M/yy', 'd/M/yyyy'];
 
 /**
@@ -150,6 +162,25 @@ export function formatCost(value, { minCompact = 10000 } = {}) {
 		minimumFractionDigits: 2,
 		maximumFractionDigits: 2
 	});
+}
+
+/** Always full locale two-decimal amount (never k/M/B). */
+export function formatCostFull(value) {
+	return formatCost(value, { minCompact: Infinity });
+}
+
+/**
+ * Display + full pair for hover tooltips when the short form is used.
+ * `compact` is true only when display differs from the full amount.
+ */
+export function costParts(value, { minCompact = 10000 } = {}) {
+	const display = formatCost(value, { minCompact });
+	const full = formatCostFull(value);
+	return {
+		display,
+		full,
+		compact: display !== '—' && display !== full
+	};
 }
 
 /** True when balance payload has future inflows or outflows. */

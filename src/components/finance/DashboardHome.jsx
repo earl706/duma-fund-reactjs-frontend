@@ -17,6 +17,7 @@ import { ArrowDownLeft, ArrowUpRight, LayoutDashboard, ScanLine } from 'lucide-r
 import { cn, formatActivityDate, formatCost, hasUpcomingBalance } from '../../lib/format';
 import { PageHeader } from '../layout/PageHeader';
 import { Button, EmptyState, LoadingSwap } from '../ui';
+import { CostAmount } from './CostAmount';
 import { ProfileSwitcher } from './ProfileSwitcher';
 import { LedgerAmount, TypeGlyph } from './txnDisplay';
 
@@ -193,7 +194,7 @@ function CategoryPie({ rows }) {
 							<span className="truncate">{row.name}</span>
 						</p>
 						<p className="text-fg shrink-0 text-xs font-semibold tabular-nums">
-							{row.percent}% · {formatCost(row.amount)}
+							{row.percent}% · <CostAmount value={row.amount} />
 						</p>
 					</li>
 				))}
@@ -219,7 +220,7 @@ function DashboardPane({
 			<section className="border-line bg-surface shrink-0 rounded-lg border px-4 py-4">
 				<p className="text-muted text-sm font-medium">Your balance</p>
 				<p className="text-fg mt-1 text-[2rem] leading-none font-semibold tracking-tight tabular-nums">
-					{balance ? formatCost(balance.balance) : '—'}
+					{balance ? <CostAmount value={balance.balance} className="text-fg font-semibold" /> : '—'}
 				</p>
 				{showProjected && (
 					<p
@@ -228,7 +229,14 @@ function DashboardPane({
 							netToneClass(Number(balance.projected_balance) - Number(balance.balance || 0))
 						)}
 					>
-						Projected {formatCost(balance.projected_balance)}
+						Projected{' '}
+						<CostAmount
+							value={balance.projected_balance}
+							className={cn(
+								'font-semibold',
+								netToneClass(Number(balance.projected_balance) - Number(balance.balance || 0))
+							)}
+						/>
 					</p>
 				)}
 				{balance?.sources?.length > 0 && (
@@ -241,7 +249,7 @@ function DashboardPane({
 									{src.name}
 									{src.status === 'archived' ? ' · archived' : ''}
 								</span>
-								<span className="text-fg shrink-0 tabular-nums">{formatCost(src.balance)}</span>
+								<CostAmount value={src.balance} className="text-fg shrink-0" />
 							</li>
 						))}
 					</ul>
@@ -254,7 +262,7 @@ function DashboardPane({
 						<ArrowDownLeft size={14} /> Money in
 					</p>
 					<p className="text-success mt-1 text-lg font-semibold tabular-nums">
-						+{formatCost(moneyIn)}
+						<CostAmount value={moneyIn} prefix="+" className="text-success font-semibold" />
 					</p>
 				</div>
 				<div className="border-line bg-surface rounded-lg border px-4 py-3">
@@ -262,7 +270,7 @@ function DashboardPane({
 						<ArrowUpRight size={14} /> Money out
 					</p>
 					<p className="text-danger mt-1 text-lg font-semibold tabular-nums">
-						−{formatCost(moneyOut)}
+						<CostAmount value={moneyOut} prefix="−" className="text-danger font-semibold" />
 					</p>
 				</div>
 			</div>
