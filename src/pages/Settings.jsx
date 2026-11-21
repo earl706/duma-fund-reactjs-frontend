@@ -28,7 +28,21 @@ import { MfaDisableSection, MfaSetupModal } from '../components/auth/MfaModals';
 import { PageHeader } from '../components/layout/PageHeader';
 import { StickyPageChrome } from '../components/layout/StickyPageChrome';
 import { PurchaseAlertList } from '../components/layout/PurchaseNotifications';
-import { Avatar, Button, Card, CardBody, CardHeader, Input, Modal } from '../components/ui';
+import {
+	Avatar,
+	Button,
+	Card,
+	CardBody,
+	CardHeader,
+	IconChoiceGroup,
+	Input,
+	Modal
+} from '../components/ui';
+
+const TRANSACTIONS_VIEW_OPTIONS = [
+	{ value: 'list', label: 'List', title: 'List view' },
+	{ value: 'calendar', label: 'Calendar', title: 'Calendar view' }
+];
 
 function accountDisplayName(user) {
 	const name = (user?.full_name || '').trim();
@@ -357,6 +371,21 @@ export default function SettingsPage() {
 										</button>
 									))}
 								</div>
+							</div>
+							<div>
+								<span className="text-fg mb-1.5 block text-sm font-medium">
+									Default transactions view
+								</span>
+								<IconChoiceGroup
+									groupKey="view"
+									options={TRANSACTIONS_VIEW_OPTIONS}
+									value={user?.default_transactions_view === 'calendar' ? 'calendar' : 'list'}
+									onChange={(next) => {
+										if (next === (user?.default_transactions_view || 'list')) return;
+										saveName.mutate({ default_transactions_view: next });
+									}}
+									ariaLabel="Default transactions view"
+								/>
 							</div>
 							<div className="flex flex-col gap-2">
 								<Button variant="danger" onClick={logout} className="h-11 w-full sm:h-9">

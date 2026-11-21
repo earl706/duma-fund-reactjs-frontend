@@ -32,6 +32,10 @@ export function excludePurchaseMatch(query_title, matched_title) {
 	return post('/finance/purchases/exclude/', { query_title, matched_title });
 }
 
+export function mergePurchaseTitles(titles) {
+	return post('/finance/purchases/merge/', { titles });
+}
+
 export function useDebouncedValue(value, delayMs = 280) {
 	const [debounced, setDebounced] = useState(value);
 	useEffect(() => {
@@ -93,25 +97,46 @@ export function usePurchaseLookup(query, { enabled = true, limit = 5, debounceMs
 
 export function usePurchaseActions() {
 	const queryClient = useQueryClient();
-	const invalidate = () => {
-		queryClient.invalidateQueries({ queryKey: ['finance-purchase-lookup'] });
+	const invalidateRelated = () => {
 		queryClient.invalidateQueries({ queryKey: ['finance-purchase-insights'] });
 		queryClient.invalidateQueries({ queryKey: ['finance-purchase-history'] });
 		queryClient.invalidateQueries({ queryKey: ['finance-purchase-notifications'] });
 	};
+	/** Await lookup refetch so action buttons stay pending until UI data catches up. */
+	const invalidate = async () => {
+		await queryClient.invalidateQueries({ queryKey: ['finance-purchase-lookup'] });
+		invalidateRelated();
+	};
 
 	const markRegular = useMutation({
-		mutationFn: (title) => markPurchaseRegular(title),
-		onSuccess: invalidate
+		mutationFn: async (title) => {
+			const result = await markPurchaseRegular(title);
+			await invalidate();
+			return result;
+		}
 	});
 	const unmarkRegular = useMutation({
-		mutationFn: (title) => unmarkPurchaseRegular(title),
-		onSuccess: invalidate
+		mutationFn: async (title) => {
+			const result = await unmarkPurchaseRegular(title);
+			await invalidate();
+			return result;
+		}
 	});
 	const exclude = useMutation({
-		mutationFn: ({ queryTitle, matchedTitle }) => excludePurchaseMatch(queryTitle, matchedTitle),
-		onSuccess: invalidate
+		mutationFn: async ({ queryTitle, matchedTitle }) => {
+			const result = await excludePurchaseMatch(queryTitle, matchedTitle);
+			await invalidate();
+			return result;
+		}
+	});
+	const merge = useMutation({
+		mutationFn: async (titles) => {
+			const result = await mergePurchaseTitles(titles);
+			await queryClient.invalidateQueries({ queryKey: ['finance-purchase-insights'] });
+			await invalidate();
+			return result;
+		}
 	});
 
-	return { markRegular, unmarkRegular, exclude, invalidate };
+	return { markRegular, unmarkRegular, exclude, merge, invalidate };
 }

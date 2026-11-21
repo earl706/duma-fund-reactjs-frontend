@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Link } from 'react-router-dom';
 import { Ban, RefreshCw } from 'lucide-react';
@@ -7,7 +7,7 @@ import { cn, formatCost } from '../../lib/format';
 import { usePurchaseActions, usePurchaseLookup } from '../../lib/purchases';
 import { toast } from '../../stores/toastStore';
 import { useIsProfileOwner } from '../../stores/profileStore';
-import { Button } from '../ui';
+import { Button, Spinner } from '../ui';
 
 function statusLabel(status) {
 	if (status === 'regular') return 'Regular';
@@ -102,6 +102,11 @@ export function ScanPurchaseActions({ query, buttonClassName = 'h-8 w-8' }) {
 	const [pos, setPos] = useState(null);
 	const hideTimer = useRef(null);
 
+	useEffect(() => {
+		markRegular.reset();
+		exclude.reset();
+	}, [query]); // eslint-disable-line react-hooks/exhaustive-deps -- reset action state when the row title changes
+
 	useLayoutEffect(() => {
 		if (!tipOpen || !wrapRef.current) {
 			setPos(null);
@@ -144,7 +149,10 @@ export function ScanPurchaseActions({ query, buttonClassName = 'h-8 w-8' }) {
 		hideTimer.current = setTimeout(() => setTipOpen(false), 120);
 	};
 
-	if (!primary || !isOwner) return null;
+	if (exclude.isSuccess || !primary || !isOwner) return null;
+
+	const actionsBusy = exclude.isPending || markRegular.isPending;
+	const showMarkRegular = primary.status !== 'regular' && !markRegular.isSuccess;
 
 	const handleExclude = () => {
 		exclude.mutate(
@@ -181,12 +189,13 @@ export function ScanPurchaseActions({ query, buttonClassName = 'h-8 w-8' }) {
 					className={cn('text-muted hover:text-danger', buttonClassName)}
 					aria-label="Not the same product"
 					title="Not the same product"
-					disabled={exclude.isPending}
+					disabled={actionsBusy}
+					aria-busy={exclude.isPending || undefined}
 					onClick={handleExclude}
 				>
-					<Ban size={15} />
+					{exclude.isPending ? <Spinner size={15} alt="" /> : <Ban size={15} />}
 				</Button>
-				{primary.status !== 'regular' && (
+				{showMarkRegular && (
 					<Button
 						variant="ghost"
 						size="icon"
@@ -194,10 +203,11 @@ export function ScanPurchaseActions({ query, buttonClassName = 'h-8 w-8' }) {
 						className={cn('text-muted hover:text-primary', buttonClassName)}
 						aria-label="Mark as regular"
 						title="Mark as regular"
-						disabled={markRegular.isPending}
+						disabled={actionsBusy}
+						aria-busy={markRegular.isPending || undefined}
 						onClick={handleMarkRegular}
 					>
-						<RefreshCw size={15} />
+						{markRegular.isPending ? <Spinner size={15} alt="" /> : <RefreshCw size={15} />}
 					</Button>
 				)}
 			</span>
@@ -230,7 +240,13 @@ export function PurchaseHint({ query, onInteractStart, className = '' }) {
 	const isOwner = useIsProfileOwner();
 	const matches = data?.matches || [];
 
+	useEffect(() => {
+		markRegular.reset();
+		exclude.reset();
+	}, [query]); // eslint-disable-line react-hooks/exhaustive-deps -- reset action state when the typed title changes
+
 	if (!(query || '').trim() || (query || '').trim().length < 2) return null;
+	if (exclude.isSuccess) return null;
 	if (!isFetching && matches.length === 0) return null;
 
 	const primary = matches[0];
@@ -247,6 +263,9 @@ export function PurchaseHint({ query, onInteractStart, className = '' }) {
 		);
 	}
 	if (!primary) return null;
+
+	const actionsBusy = exclude.isPending || markRegular.isPending;
+	const showMarkRegular = primary.status !== 'regular' && !markRegular.isSuccess;
 
 	const handleExclude = (matchedTitle) => {
 		onInteractStart?.();
@@ -288,18 +307,20 @@ export function PurchaseHint({ query, onInteractStart, className = '' }) {
 							type="button"
 							className="h-9 w-full justify-center md:w-auto"
 							onClick={() => handleExclude(primary.display_title)}
-							disabled={exclude.isPending}
+							loading={exclude.isPending}
+							disabled={actionsBusy}
 						>
 							Not the same product
 						</Button>
-						{primary.status !== 'regular' && (
+						{showMarkRegular && (
 							<Button
 								variant="secondary"
 								size="sm"
 								type="button"
 								className="h-9 w-full justify-center md:w-auto"
 								onClick={() => handleMarkRegular(primary.display_title)}
-								disabled={markRegular.isPending}
+								loading={markRegular.isPending}
+								disabled={actionsBusy}
 							>
 								Mark as regular
 							</Button>

@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeftRight, BookUser, FileDown, FileUp, Plus, ScanLine } from 'lucide-react';
 
 import { cashSourceId, resolveSourceId, sourceSelectOptions } from '../lib/balanceSources';
 import { categoriesApi, sourcesApi, transactionsApi, useFinanceBalance } from '../lib/resources';
-import { del, post } from '../lib/api';
+import { del, patch, post } from '../lib/api';
 import { fetchAllPages } from '../lib/fetchAll';
 import { useMobileLayout } from '../hooks/useMobileLayout';
 import { downloadBlob } from '../lib/groceryReceipt';
@@ -22,6 +22,7 @@ import {
 	serializeTransactionsCsv
 } from '../lib/transactionCsv';
 import { toast } from '../stores/toastStore';
+import { useAuthStore } from '../stores/authStore';
 import { useActiveProfileId, useCanEditLedger, useProfileStore } from '../stores/profileStore';
 import { useListControls } from '../hooks/useListControls';
 import { AccountsInformationModal } from '../components/finance/AccountsInformationModal';
@@ -31,10 +32,7 @@ import { MobileTransactionsView } from '../components/finance/MobileTransactions
 import { MobileTransactionEditModal } from '../components/finance/MobileTransactionEditModal';
 import { MoveMoneyModal } from '../components/finance/MoveMoneyModal';
 import { LedgerAmount, TxnCornerBadges } from '../components/finance/txnDisplay';
-import {
-	SegmentedToggle,
-	TransactionCalendarView
-} from '../components/finance/TransactionCalendarView';
+import { TransactionCalendarView } from '../components/finance/TransactionCalendarView';
 import {
 	parseAnchorDate,
 	toISODate,
@@ -52,6 +50,7 @@ import {
 	Button,
 	DataSheet,
 	EmptyState,
+	IconChoiceGroup,
 	ListToolbar,
 	LoadingSwap,
 	Modal,
@@ -91,6 +90,15 @@ function categoryLabel(cat) {
 	return cat.parent_name ? `${cat.parent_name} › ${cat.name}` : cat.name;
 }
 
+function resolvePreferredView(user) {
+	return user?.default_transactions_view === 'calendar' ? 'calendar' : 'list';
+}
+
+function applyViewParam(params, nextView, preferred) {
+	if (nextView === preferred) params.delete('view');
+	else params.set('view', nextView);
+}
+
 export default function TransactionsPage() {
 	const navigate = useNavigate();
 	const [searchParams, setSearchParams] = useSearchParams();
@@ -99,6 +107,9 @@ export default function TransactionsPage() {
 	const { data: balance } = useFinanceBalance();
 	const canEdit = useCanEditLedger();
 	const profileId = useActiveProfileId();
+	const user = useAuthStore((s) => s.user);
+	const updateUser = useAuthStore((s) => s.updateUser);
+	const preferredView = resolvePreferredView(user);
 	const showAuthors = useProfileStore((s) => {
 		const active = s.profiles.find((p) => p.id === s.activeProfileId);
 		return (active?.member_count ?? 0) > 1;
@@ -107,7 +118,8 @@ export default function TransactionsPage() {
 	const { data: incomeCats } = categoriesApi.useList({ page_size: 100, kind: 'income' });
 	const { data: sourcesData } = sourcesApi.useList({ page_size: 100 });
 
-	const view = searchParams.get('view') === 'calendar' ? 'calendar' : 'list';
+	const urlView = searchParams.get('view');
+	const view = urlView === 'calendar' || urlView === 'list' ? urlView : preferredView;
 	const calGrain = CAL_VALUES.has(searchParams.get('cal')) ? searchParams.get('cal') : 'month';
 	const dateParam = searchParams.get('date');
 	const calAnchor = useMemo(() => parseAnchorDate(dateParam), [dateParam]);
@@ -128,14 +140,13 @@ export default function TransactionsPage() {
 
 	const setView = (nextView) => {
 		patchSearchParams((next) => {
-			if (nextView === 'list') next.delete('view');
-			else next.set('view', nextView);
+			applyViewParam(next, nextView, preferredView);
 		});
 	};
 
 	const setCalGrain = (grain) => {
 		patchSearchParams((next) => {
-			next.set('view', 'calendar');
+			applyViewParam(next, 'calendar', preferredView);
 			if (grain === 'month') next.delete('cal');
 			else next.set('cal', grain);
 		});
@@ -143,13 +154,24 @@ export default function TransactionsPage() {
 
 	const setCalAnchor = (date) => {
 		patchSearchParams((next) => {
-			next.set('view', 'calendar');
+			applyViewParam(next, 'calendar', preferredView);
 			const iso = toISODate(date instanceof Date ? date : parseAnchorDate(date));
 			const today = toISODate(new Date());
 			if (iso === today) next.delete('date');
 			else next.set('date', iso);
 		});
 	};
+
+	const saveDefaultView = useMutation({
+		mutationFn: (nextView) => patch('/auth/me/', { default_transactions_view: nextView }),
+		onSuccess: (data) => {
+			updateUser(data);
+			const nextPreferred = resolvePreferredView(data);
+			patchSearchParams((next) => applyViewParam(next, view, nextPreferred));
+			toast.success('Default transactions view updated.');
+		},
+		onError: () => toast.error('Could not update default view.')
+	});
 
 	const calRange = useMemo(() => visibleRange(calAnchor, calGrain), [calAnchor, calGrain]);
 	const calParams = useMemo(
@@ -242,12 +264,26 @@ export default function TransactionsPage() {
 	});
 
 	const viewToggle = (
-		<SegmentedToggle
-			options={VIEW_OPTIONS}
-			value={view}
-			onChange={setView}
-			ariaLabel="Transactions view"
-		/>
+		<div className="flex flex-wrap items-center gap-2">
+			{view !== preferredView ? (
+				<Button
+					type="button"
+					variant="secondary"
+					className="h-9"
+					loading={saveDefaultView.isPending}
+					onClick={() => saveDefaultView.mutate(view)}
+				>
+					Set as default
+				</Button>
+			) : null}
+			<IconChoiceGroup
+				groupKey="view"
+				options={VIEW_OPTIONS}
+				value={view}
+				onChange={setView}
+				ariaLabel="Transactions view"
+			/>
+		</div>
 	);
 
 	const [deleteTarget, setDeleteTarget] = useState(null);
@@ -1123,7 +1159,7 @@ export default function TransactionsPage() {
 							value: filters.horizon || '',
 							onChange: (v) => setFilter('horizon', v),
 							options: [
-								{ value: '', label: 'All dates' },
+								{ value: '', label: 'All' },
 								{ value: 'upcoming', label: 'Upcoming' }
 							]
 						}

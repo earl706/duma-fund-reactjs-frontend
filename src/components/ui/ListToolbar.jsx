@@ -1,7 +1,7 @@
 import { Search } from 'lucide-react';
 
 import { cn } from '../../lib/format';
-import { Select } from './Field';
+import { IconChoiceGroup } from './IconChoiceGroup';
 
 /**
  * @param {object} props
@@ -10,8 +10,8 @@ import { Select } from './Field';
  * @param {string} [props.searchPlaceholder]
  * @param {string} [props.ordering]
  * @param {(value: string) => void} [props.onOrderingChange]
- * @param {{ value: string, label: string }[]} [props.sortOptions]
- * @param {{ key: string, label: string, value: string, onChange: (v: string) => void, options: { value: string, label: string }[] }[]} [props.filters]
+ * @param {{ value: string, label: string, icon?: import('lucide-react').LucideIcon }[]} [props.sortOptions]
+ * @param {{ key: string, label: string, value: string, onChange: (v: string) => void, options: { value: string, label: string, title?: string, icon?: import('lucide-react').LucideIcon }[] }[]} [props.filters]
  * @param {import('react').ReactNode} [props.trailing] — aligned with filter controls (e.g. view toggle)
  * @param {string} [props.className]
  */
@@ -51,33 +51,28 @@ export function ListToolbar({
 				)}
 				<div className="flex flex-wrap items-end gap-2">
 					{sortOptions.length > 0 && onOrderingChange && (
-						<Select
-							label="Sort"
-							value={ordering}
-							onChange={(e) => onOrderingChange(e.target.value)}
-							className="min-w-[10rem]"
-						>
-							{sortOptions.map((opt) => (
-								<option key={opt.value} value={opt.value}>
-									{opt.label}
-								</option>
-							))}
-						</Select>
+						<div className="space-y-1">
+							<p className="text-fg text-sm font-medium">Sort</p>
+							<IconChoiceGroup
+								groupKey="sort"
+								ariaLabel="Sort"
+								options={sortOptions}
+								value={ordering}
+								onChange={onOrderingChange}
+							/>
+						</div>
 					)}
 					{filters.map((filter) => (
-						<Select
-							key={filter.key}
-							label={filter.label}
-							value={filter.value}
-							onChange={(e) => filter.onChange(e.target.value)}
-							className="min-w-[10rem]"
-						>
-							{filter.options.map((opt) => (
-								<option key={opt.value} value={opt.value}>
-									{opt.label}
-								</option>
-							))}
-						</Select>
+						<div key={filter.key} className="space-y-1">
+							{filter.label ? <p className="text-fg text-sm font-medium">{filter.label}</p> : null}
+							<IconChoiceGroup
+								groupKey={filter.key}
+								ariaLabel={filter.label || filter.key}
+								options={filter.options}
+								value={filter.value}
+								onChange={filter.onChange}
+							/>
+						</div>
 					))}
 				</div>
 			</div>

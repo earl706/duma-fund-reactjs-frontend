@@ -11,6 +11,8 @@ export function IconChoice({
 	label,
 	onClick,
 	ariaLabel,
+	title,
+	truncateLabel = true,
 	className
 }) {
 	return (
@@ -20,7 +22,7 @@ export function IconChoice({
 			onClick={onClick}
 			aria-label={ariaLabel || label}
 			aria-pressed={selected}
-			title={label}
+			title={title || label}
 			className={cn(
 				'inline-flex w-full min-w-0 flex-1 cursor-pointer flex-col items-center justify-center gap-1 rounded-md px-1 py-1.5 text-center transition-colors duration-150',
 				'focus-visible:outline-primary focus-visible:outline-2 focus-visible:outline-offset-2',
@@ -30,7 +32,12 @@ export function IconChoice({
 			)}
 		>
 			{Icon ? <Icon size={16} className="shrink-0" aria-hidden /> : null}
-			<span className="max-w-full truncate text-center text-[10px] font-medium tracking-wide">
+			<span
+				className={cn(
+					'max-w-full text-center text-[10px] font-medium tracking-wide',
+					truncateLabel ? 'truncate' : 'whitespace-nowrap'
+				)}
+			>
 				{label}
 			</span>
 		</button>

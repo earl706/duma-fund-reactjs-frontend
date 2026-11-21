@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 
 import { cn, costParts } from '../../lib/format';
-import { Button, EmptyState, LoadingSwap, Tooltip } from '../ui';
+import { Button, EmptyState, IconChoiceGroup, LoadingSwap, Tooltip } from '../ui';
 import { LedgerAmount } from './txnDisplay';
 import { TransactionDayDetailBody, TransactionDayDetailModal } from './TransactionDayDetailModal';
 import {
@@ -20,32 +20,6 @@ import {
 } from './transactionCalendar';
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-
-function SegmentedToggle({ options, value, onChange, ariaLabel }) {
-	return (
-		<div
-			className="border-line bg-surface-2 inline-flex rounded-md border p-0.5"
-			role="group"
-			aria-label={ariaLabel}
-		>
-			{options.map((opt) => (
-				<Button
-					key={opt.value}
-					type="button"
-					size="sm"
-					variant={value === opt.value ? 'primary' : 'ghost'}
-					className="h-8 shrink-0"
-					title={opt.title || opt.label}
-					aria-label={opt.title || opt.label}
-					aria-pressed={value === opt.value}
-					onClick={() => onChange(opt.value)}
-				>
-					{opt.label}
-				</Button>
-			))}
-		</div>
-	);
-}
 
 function NetLabel({ value, className }) {
 	const amount = Number(value);
@@ -219,7 +193,8 @@ export function TransactionCalendarView({
 					>
 						Today
 					</Button>
-					<SegmentedToggle
+					<IconChoiceGroup
+						groupKey="grain"
 						options={CAL_GRAINS}
 						value={grain}
 						onChange={onGrainChange}
@@ -307,4 +282,4 @@ export function TransactionCalendarView({
 	);
 }
 
-export { SegmentedToggle };
+export { IconChoiceGroup as SegmentedToggle } from '../ui';

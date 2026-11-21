@@ -51,7 +51,7 @@ import {
 const DEFAULT_ORDERING = 'title';
 
 const STATUS_OPTIONS = [
-	{ value: '', label: 'All statuses' },
+	{ value: '', label: 'All' },
 	{ value: 'active', label: 'Active' },
 	{ value: 'archived', label: 'Archived' }
 ];

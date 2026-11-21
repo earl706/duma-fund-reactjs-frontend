@@ -1,12 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { RefreshCw } from 'lucide-react';
+import { ExternalLink, RefreshCw } from 'lucide-react';
 
-import { cn } from '../lib/format';
+import { cn, formatDateLong } from '../lib/format';
 import { usePurchaseActions, usePurchaseInsights } from '../lib/purchases';
-import { paginateClient } from '../hooks/useListControls';
 import { toast } from '../stores/toastStore';
-import { useIsProfileOwner } from '../stores/profileStore';
+import { useCanEditLedger, useIsProfileOwner } from '../stores/profileStore';
 import { PageHeader } from '../components/layout/PageHeader';
 import { StickyPageChrome } from '../components/layout/StickyPageChrome';
 import { CostAmount } from '../components/finance/CostAmount';
@@ -15,16 +14,14 @@ import {
 	PurchasePriceDetailModal
 } from '../components/finance/PurchasePriceDetailModal';
 import { priceDeltaParts } from '../components/finance/purchasePriceDelta';
-import { Button, Card, EmptyState, LoadingSwap, Pagination } from '../components/ui';
-
-const SECTION_PAGE_SIZE = 12;
+import { Button, EmptyState, LoadingSwap } from '../components/ui';
 
 const INSIGHT_TABS = [
 	{
 		id: 'all',
 		label: 'All',
 		rowsKey: 'all',
-		description: 'Every tracked product, newest purchases first.',
+		description: 'Every tracked product, ranked by buy frequency and how recently you bought it.',
 		empty: 'No purchase history yet.'
 	},
 	{
@@ -52,7 +49,7 @@ const INSIGHT_TABS = [
 		id: 'recently-seen',
 		label: 'Recently seen',
 		rowsKey: 'recently_seen',
-		description: 'Other items with purchase history (not auto-regular).',
+		description: 'Other items with purchase history, ranked by frequency and recency.',
 		empty: 'No other purchase history yet.'
 	}
 ];
@@ -60,6 +57,131 @@ const INSIGHT_TABS = [
 function resolveInsightTab(raw) {
 	if (INSIGHT_TABS.some((tab) => tab.id === raw)) return raw;
 	return INSIGHT_TABS[0].id;
+}
+
+function rowId(row) {
+	return row.normalized_title || row.display_title;
+}
+
+function statusLabel(status) {
+	if (status === 'regular') return 'Regular';
+	if (status === 'lapsed') return 'Lapsed';
+	if (status === 'related') return 'Related';
+	return 'Seen';
+}
+
+/** Empty string = backend/default tab order (activity rank, etc.). */
+const DEFAULT_ORDERING = '';
+
+const SORTABLE_COLUMNS = [
+	{ key: 'display_title', label: 'Product', align: 'left', width: 'w-[22%]', type: 'string' },
+	{ key: 'status', label: 'Status', align: 'left', width: 'w-[9%]', type: 'string' },
+	{ key: 'last_price', label: 'Last price', align: 'right', width: 'w-[14%]', type: 'number' },
+	{ key: 'purchase_count', label: 'Buys', align: 'right', width: 'w-[8%]', type: 'number' },
+	{ key: 'typical_qty', label: 'Qty', align: 'right', width: 'w-[8%]', type: 'number' },
+	{ key: 'last_merchant', label: 'Merchant', align: 'left', width: 'w-[14%]', type: 'string' },
+	{ key: 'last_purchased_at', label: 'Last bought', align: 'left', width: 'w-[14%]', type: 'date' }
+];
+
+function parseOrdering(ordering) {
+	if (!ordering) return { key: '', dir: null };
+	const primary = String(ordering).split(',')[0].trim();
+	if (primary.startsWith('-')) return { key: primary.slice(1), dir: 'desc' };
+	return { key: primary, dir: 'asc' };
+}
+
+/** none → asc → desc → defaultOrdering (DataSheet cycle). */
+function nextOrdering(current, sortKey, defaultOrdering = DEFAULT_ORDERING) {
+	const asc = sortKey;
+	const desc = `-${sortKey}`;
+	const primary = String(current || '')
+		.split(',')[0]
+		.trim();
+	if (primary === asc) return desc;
+	if (primary === desc) {
+		return current === defaultOrdering || primary === defaultOrdering ? asc : defaultOrdering;
+	}
+	return asc;
+}
+
+function SortIndicator({ direction }) {
+	return (
+		<span className="inline-flex shrink-0 flex-col leading-none" aria-hidden>
+			<span className={cn('text-[7px]', direction === 'asc' ? 'text-fg' : 'text-muted/35')}>▲</span>
+			<span className={cn('-mt-px text-[7px]', direction === 'desc' ? 'text-fg' : 'text-muted/35')}>
+				▼
+			</span>
+		</span>
+	);
+}
+
+function sortValue(row, key, type) {
+	if (key === 'last_price') {
+		const n = Number(row.last_price ?? row.typical_price);
+		return Number.isFinite(n) ? n : null;
+	}
+	if (type === 'number') {
+		const n = Number(row[key]);
+		return Number.isFinite(n) ? n : null;
+	}
+	if (type === 'date') {
+		const raw = row[key];
+		if (!raw) return null;
+		const t = Date.parse(raw);
+		return Number.isFinite(t) ? t : null;
+	}
+	if (key === 'status') return statusLabel(row.status).toLowerCase();
+	if (key === 'last_merchant') return (row.last_merchant || '').toLowerCase();
+	return (row[key] || '').toString().toLowerCase();
+}
+
+function sortInsightRows(rows, ordering) {
+	const { key, dir } = parseOrdering(ordering);
+	if (!key || !dir) return rows;
+	const col = SORTABLE_COLUMNS.find((c) => c.key === key);
+	if (!col) return rows;
+	const mul = dir === 'desc' ? -1 : 1;
+	return [...rows].sort((a, b) => {
+		const av = sortValue(a, key, col.type);
+		const bv = sortValue(b, key, col.type);
+		if (av == null && bv == null) return 0;
+		if (av == null) return 1;
+		if (bv == null) return -1;
+		if (typeof av === 'number' && typeof bv === 'number') return (av - bv) * mul;
+		return String(av).localeCompare(String(bv), undefined, { sensitivity: 'base' }) * mul;
+	});
+}
+
+function SortableTh({ col, ordering, onOrderingChange }) {
+	const { key: activeKey, dir } = parseOrdering(ordering);
+	const active = activeKey === col.key;
+	const ariaSort = active ? (dir === 'desc' ? 'descending' : 'ascending') : 'none';
+
+	return (
+		<th
+			scope="col"
+			aria-sort={ariaSort}
+			className={cn(
+				'text-muted px-1.5 py-1 text-[10px] font-semibold tracking-wide uppercase',
+				col.width,
+				col.align === 'right' ? 'text-right' : 'text-left'
+			)}
+		>
+			<button
+				type="button"
+				className={cn(
+					'inline-flex max-w-full cursor-pointer items-center gap-0.5 select-none',
+					col.align === 'right' && 'ml-auto',
+					active ? 'text-fg' : 'hover:text-fg'
+				)}
+				onClick={() => onOrderingChange(nextOrdering(ordering, col.key))}
+				aria-label={`Sort by ${col.label}`}
+			>
+				<span className="min-w-0 truncate">{col.label}</span>
+				<SortIndicator direction={active ? dir : null} />
+			</button>
+		</th>
+	);
 }
 
 function InsightTabBar({ tabs, active, onChange }) {
@@ -133,24 +255,34 @@ function InsightPanel({ id, active, children }) {
 	);
 }
 
-function itemStats(row) {
-	const when = row.last_purchased_at || '—';
-	const ago = row.days_since_last != null ? ` (${row.days_since_last}d ago)` : '';
-	return `qty ${row.typical_qty ?? '—'} · ${row.last_merchant || 'Unknown'} · ${when}${ago}`;
+function lastBoughtLabel(row) {
+	if (!row.last_purchased_at) return '—';
+	const when = formatDateLong(row.last_purchased_at);
+	if (row.days_since_last == null) return when;
+	return `${when} (${row.days_since_last}d)`;
 }
 
-function ItemCard({ row, compareMode, onOpen, onMarkRegular }) {
+function InsightRow({
+	row,
+	compareMode,
+	selected,
+	selectable,
+	onToggleSelect,
+	onOpen,
+	onMarkRegular
+}) {
 	const showMark = Boolean(onMarkRegular) && row.status !== 'regular';
-	const stats = itemStats(row);
 	const lastPrice = row.last_price ?? row.typical_price;
 	const delta = priceDeltaParts(row, compareMode);
 
 	return (
-		<Card
-			as="li"
+		<tr
 			role="button"
 			tabIndex={0}
-			className="hover:border-primary/40 focus-visible:ring-primary flex h-full min-w-0 cursor-pointer flex-col gap-2 p-3 transition-colors focus-visible:ring-2 focus-visible:outline-none"
+			className={cn(
+				'border-line hover:bg-surface-2/80 focus-visible:bg-surface-2 cursor-pointer border-b last:border-b-0 focus-visible:outline-none',
+				selected && 'bg-primary/5'
+			)}
 			onClick={() => onOpen?.(row)}
 			onKeyDown={(e) => {
 				if (e.key === 'Enter' || e.key === ' ') {
@@ -159,84 +291,247 @@ function ItemCard({ row, compareMode, onOpen, onMarkRegular }) {
 				}
 			}}
 		>
-			<div className="text-fg min-w-0 truncate font-medium" title={row.display_title}>
+			{selectable ? (
+				<td className="w-8 px-1.5 py-0.5 text-center" onClick={(e) => e.stopPropagation()}>
+					<input
+						type="checkbox"
+						className="accent-primary h-3.5 w-3.5 cursor-pointer"
+						checked={selected}
+						onChange={(e) => onToggleSelect?.(rowId(row), { shiftKey: e.nativeEvent.shiftKey })}
+						aria-label={`Select ${row.display_title}`}
+					/>
+				</td>
+			) : null}
+			<td
+				className="text-fg max-w-[14rem] truncate px-1.5 py-0.5 font-medium"
+				title={row.display_title}
+			>
 				{row.display_title}
-			</div>
-			<p className="text-fg flex flex-wrap items-baseline gap-x-2 text-sm tabular-nums">
-				<CostAmount value={lastPrice} className="font-medium" />
-				{delta ? (
-					<span className={cn('text-xs font-medium', delta.className)}>{delta.text}</span>
-				) : null}
-			</p>
-			<p className="text-muted truncate text-sm" title={stats}>
-				{stats}
-			</p>
-			<div className="mt-auto flex flex-wrap items-center justify-between gap-x-2 gap-y-1.5">
-				{row.last_transaction_id ? (
-					<Link
-						to={`/transactions/${row.last_transaction_id}`}
-						className="text-primary text-sm hover:underline"
-						onClick={(e) => e.stopPropagation()}
-					>
-						Open last transaction
-					</Link>
-				) : (
-					<span />
-				)}
-				{showMark ? (
-					<Button
-						variant="secondary"
-						size="sm"
-						type="button"
-						className="shrink-0"
-						onClick={(e) => {
-							e.stopPropagation();
-							onMarkRegular(row.display_title);
-						}}
-					>
-						Mark regular
-					</Button>
-				) : null}
-			</div>
-		</Card>
+			</td>
+			<td className="text-muted px-1.5 py-0.5 whitespace-nowrap">{statusLabel(row.status)}</td>
+			<td className="px-1.5 py-0.5 text-right tabular-nums">
+				<span className="text-fg inline-flex flex-wrap items-baseline justify-end gap-x-1.5">
+					<CostAmount value={lastPrice} className="font-medium" />
+					{delta ? (
+						<span className={cn('text-[10px] font-medium', delta.className)}>{delta.text}</span>
+					) : null}
+				</span>
+			</td>
+			<td className="text-fg px-1.5 py-0.5 text-right whitespace-nowrap tabular-nums">
+				{row.purchase_count ?? '—'}
+			</td>
+			<td className="text-muted px-1.5 py-0.5 text-right whitespace-nowrap tabular-nums">
+				{row.typical_qty ?? '—'}
+			</td>
+			<td
+				className="text-muted max-w-[9rem] truncate px-1.5 py-0.5"
+				title={row.last_merchant || 'Unknown'}
+			>
+				{row.last_merchant || 'Unknown'}
+			</td>
+			<td className="text-muted px-1.5 py-0.5 whitespace-nowrap">{lastBoughtLabel(row)}</td>
+			<td className="px-0.5 py-0.5 text-right">
+				{/* Fixed h-7 so rows with/without action icons share the same height */}
+				<div className="inline-flex h-7 w-full items-center justify-end gap-0.5">
+					{row.last_transaction_id ? (
+						<Link
+							to={`/transactions/${row.last_transaction_id}`}
+							className="text-muted hover:text-fg hover:bg-surface-2 inline-flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-md"
+							aria-label={`Open last transaction for ${row.display_title}`}
+							title="Open last transaction"
+							onClick={(e) => e.stopPropagation()}
+						>
+							<ExternalLink size={14} />
+						</Link>
+					) : null}
+					{showMark ? (
+						<Button
+							variant="ghost"
+							size="icon"
+							type="button"
+							className="h-7 w-7 shrink-0"
+							aria-label={`Mark ${row.display_title} as regular`}
+							title="Mark regular"
+							onClick={(e) => {
+								e.stopPropagation();
+								onMarkRegular(row.display_title);
+							}}
+						>
+							<RefreshCw size={14} />
+						</Button>
+					) : null}
+				</div>
+			</td>
+		</tr>
 	);
 }
 
-function Section({ description, rows, empty, compareMode, onOpen, onMarkRegular }) {
-	const [page, setPage] = useState(1);
+function Section({
+	active,
+	description,
+	rows,
+	empty,
+	compareMode,
+	selectable,
+	onOpen,
+	onMarkRegular,
+	onMerge,
+	merging = false
+}) {
+	const [ordering, setOrdering] = useState(DEFAULT_ORDERING);
+	const [selectedIds, setSelectedIds] = useState(() => new Set());
+	const selectionAnchorRef = useRef(null);
 	const items = rows ?? [];
-	const paged = paginateClient(items, page, SECTION_PAGE_SIZE);
+	const sortedItems = useMemo(() => sortInsightRows(items, ordering), [items, ordering]);
+	const itemIds = useMemo(() => sortedItems.map(rowId), [sortedItems]);
+	const idSet = useMemo(() => new Set(itemIds), [itemIds]);
 
 	useEffect(() => {
-		if (paged.page !== page) setPage(paged.page);
-	}, [paged.page, page]);
+		if (!active) {
+			setOrdering(DEFAULT_ORDERING);
+			setSelectedIds(new Set());
+			selectionAnchorRef.current = null;
+		}
+	}, [active]);
+
+	useEffect(() => {
+		setSelectedIds((prev) => {
+			const next = new Set([...prev].filter((id) => idSet.has(id)));
+			return next.size === prev.size ? prev : next;
+		});
+	}, [idSet]);
+
+	const allSelected =
+		sortedItems.length > 0 && sortedItems.every((row) => selectedIds.has(rowId(row)));
+	const someSelected = sortedItems.some((row) => selectedIds.has(rowId(row)));
+
+	const toggleRow = (id, { shiftKey = false } = {}) => {
+		setSelectedIds((prev) => {
+			const next = new Set(prev);
+			if (shiftKey && selectionAnchorRef.current != null) {
+				const a = itemIds.indexOf(selectionAnchorRef.current);
+				const b = itemIds.indexOf(id);
+				if (a >= 0 && b >= 0) {
+					const [lo, hi] = a < b ? [a, b] : [b, a];
+					for (let i = lo; i <= hi; i += 1) next.add(itemIds[i]);
+					return next;
+				}
+			}
+			if (next.has(id)) next.delete(id);
+			else next.add(id);
+			selectionAnchorRef.current = id;
+			return next;
+		});
+	};
+
+	const toggleAll = () => {
+		if (allSelected) {
+			selectionAnchorRef.current = null;
+			setSelectedIds(new Set());
+			return;
+		}
+		selectionAnchorRef.current = itemIds[0] ?? null;
+		setSelectedIds(new Set(itemIds));
+	};
+
+	const clearSelection = () => {
+		selectionAnchorRef.current = null;
+		setSelectedIds(new Set());
+	};
+
+	const selectedRows = useMemo(
+		() => sortedItems.filter((row) => selectedIds.has(rowId(row))),
+		[sortedItems, selectedIds]
+	);
+
+	const handleMerge = () => {
+		if (selectedRows.length < 2 || !onMerge) return;
+		onMerge(
+			selectedRows.map((row) => row.display_title),
+			{ onSettled: clearSelection }
+		);
+	};
 
 	return (
 		<section>
 			{description ? <p className="text-muted mb-3 text-sm">{description}</p> : null}
-			{!items.length ? (
+			{!sortedItems.length ? (
 				<p className="text-muted text-sm">{empty}</p>
 			) : (
-				<>
-					<ul className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-4">
-						{paged.results.map((row) => (
-							<ItemCard
-								key={row.normalized_title}
-								row={row}
-								compareMode={compareMode}
-								onOpen={onOpen}
-								onMarkRegular={onMarkRegular}
-							/>
-						))}
-					</ul>
-					<Pagination
-						page={paged.page}
-						totalPages={paged.total_pages}
-						count={paged.count}
-						pageSize={SECTION_PAGE_SIZE}
-						onPageChange={setPage}
-					/>
-				</>
+				<div className="border-line bg-surface overflow-hidden rounded-md border">
+					{selectable && selectedIds.size > 0 ? (
+						<div className="border-line bg-surface-2 flex flex-wrap items-center gap-2 border-b px-2 py-1.5">
+							<span className="text-muted text-xs">{selectedIds.size} selected</span>
+							{selectedIds.size >= 2 ? (
+								<Button
+									variant="secondary"
+									size="sm"
+									className="h-7 text-xs"
+									type="button"
+									loading={merging}
+									disabled={merging}
+									onClick={handleMerge}
+								>
+									Merge as same item
+								</Button>
+							) : null}
+							<Button
+								variant="ghost"
+								size="sm"
+								className="text-muted h-7 text-xs"
+								type="button"
+								onClick={clearSelection}
+							>
+								Clear
+							</Button>
+						</div>
+					) : null}
+					<table className="w-full table-fixed border-collapse text-xs">
+						<thead>
+							<tr className="bg-surface-2 border-line border-b">
+								{selectable ? (
+									<th scope="col" className="w-8 px-1.5 py-1">
+										<input
+											type="checkbox"
+											className="accent-primary h-3.5 w-3.5 cursor-pointer"
+											checked={allSelected}
+											ref={(el) => {
+												if (el) el.indeterminate = someSelected && !allSelected;
+											}}
+											onChange={toggleAll}
+											aria-label="Select all rows"
+										/>
+									</th>
+								) : null}
+								{SORTABLE_COLUMNS.map((col) => (
+									<SortableTh
+										key={col.key}
+										col={col}
+										ordering={ordering}
+										onOrderingChange={setOrdering}
+									/>
+								))}
+								<th className="text-muted w-[11%] px-1.5 py-1 text-right text-[10px] font-semibold tracking-wide uppercase">
+									Actions
+								</th>
+							</tr>
+						</thead>
+						<tbody>
+							{sortedItems.map((row) => (
+								<InsightRow
+									key={rowId(row)}
+									row={row}
+									compareMode={compareMode}
+									selected={selectedIds.has(rowId(row))}
+									selectable={selectable}
+									onToggleSelect={toggleRow}
+									onOpen={onOpen}
+									onMarkRegular={onMarkRegular}
+								/>
+							))}
+						</tbody>
+					</table>
+				</div>
 			)}
 		</section>
 	);
@@ -245,8 +540,9 @@ function Section({ description, rows, empty, compareMode, onOpen, onMarkRegular 
 export default function RegularBuysPage() {
 	const [searchParams, setSearchParams] = useSearchParams();
 	const { data, isLoading, isError, refetch, isFetching } = usePurchaseInsights();
-	const { markRegular } = usePurchaseActions();
+	const { markRegular, merge } = usePurchaseActions();
 	const isOwner = useIsProfileOwner();
+	const canEdit = useCanEditLedger();
 	const [compareMode, setCompareMode] = useState('previous');
 	const [detailRow, setDetailRow] = useState(null);
 
@@ -266,6 +562,17 @@ export default function RegularBuysPage() {
 		markRegular.mutate(title, {
 			onSuccess: () => toast.success('Marked as regular buy.'),
 			onError: () => toast.error('Could not mark as regular.')
+		});
+	};
+
+	const onMerge = (titles, { onSettled } = {}) => {
+		merge.mutate(titles, {
+			onSuccess: (result) => {
+				const name = result?.display_title || 'Selected products';
+				toast.success(`Merged as “${name}”.`);
+			},
+			onError: () => toast.error('Could not merge products.'),
+			onSettled
 		});
 	};
 
@@ -290,7 +597,8 @@ export default function RegularBuysPage() {
 				</div>
 			</StickyPageChrome>
 
-			<LoadingSwap loading={isLoading}>
+			{/* h-auto: avoid LoadingSwap’s h-full creating a nested scrollport with main */}
+			<LoadingSwap loading={isLoading} className="h-auto">
 				{isError ? (
 					<EmptyState
 						title="Could not load purchase insights"
@@ -300,12 +608,16 @@ export default function RegularBuysPage() {
 					INSIGHT_TABS.map((tab) => (
 						<InsightPanel key={tab.id} id={tab.id} active={activeTab}>
 							<Section
+								active={activeTab === tab.id}
 								description={tab.description}
 								rows={data?.[tab.rowsKey]}
 								empty={tab.empty}
 								compareMode={compareMode}
+								selectable={canEdit}
 								onOpen={setDetailRow}
 								onMarkRegular={isOwner ? onMarkRegular : undefined}
+								onMerge={canEdit ? onMerge : undefined}
+								merging={merge.isPending}
 							/>
 						</InsightPanel>
 					))

@@ -946,7 +946,7 @@ function RetailDraftEditor({
 			</div>
 
 			<label className="block text-sm">
-				<span className="text-fg mb-1.5 block font-medium">Receipt categories asdas</span>
+				<span className="text-fg mb-1.5 block font-medium">Receipt categories </span>
 				<CategoryMultiSelect
 					options={expenseOptions}
 					value={effectiveHeaderIds}
