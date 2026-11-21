@@ -91,7 +91,7 @@ function SidebarContent({ collapsed = false, showCollapseToggle = false }) {
 		<div className={cn('flex h-full flex-col', collapsed ? 'px-2 py-4' : 'p-4')}>
 			<div className={cn('flex flex-col gap-2', collapsed && 'items-center')}>
 				<div className={cn('flex items-center pt-1', collapsed ? 'justify-center' : 'gap-2 px-2')}>
-					<AppIcon size={36} variant="default" className="shrink-0" />
+					<AppIcon size={36} className="shrink-0" />
 					{!collapsed && <span className="text-fg text-lg font-bold tracking-tight">DumaFund</span>}
 				</div>
 				{showCollapseToggle && <CollapseToggle collapsed={collapsed} />}
