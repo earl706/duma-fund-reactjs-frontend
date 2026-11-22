@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Link } from 'react-router-dom';
-import { CopyPlus, ExternalLink, Info, Plus, Trash2 } from 'lucide-react';
+import { ChevronDown, ChevronUp, CopyPlus, ExternalLink, Info, Plus, Trash2 } from 'lucide-react';
 
 import { Spinner } from './feedback';
 
@@ -73,34 +73,21 @@ function StatusDot({ status }) {
 	);
 }
 
-/** Fill handle outside cell overflow (truncate / sheet overflow-hidden). */
-function FillHandlePortal({ anchorEl, onMouseDown }) {
-	const [coords, setCoords] = useState(null);
+const SHEET_ICON_BTN =
+	'text-muted hover:text-fg hover:bg-surface-2 inline-flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-md disabled:pointer-events-none disabled:opacity-50';
 
-	useLayoutEffect(() => {
-		if (!anchorEl) {
-			setCoords(null);
-			return;
-		}
-		const update = () => {
-			const rect = anchorEl.getBoundingClientRect();
-			setCoords({ top: rect.bottom, left: rect.right });
-		};
-		update();
-		window.addEventListener('scroll', update, true);
-		window.addEventListener('resize', update);
-		return () => {
-			window.removeEventListener('scroll', update, true);
-			window.removeEventListener('resize', update);
-		};
-	}, [anchorEl]);
-
-	if (!coords) return null;
+/**
+ * Fill handle outside cell overflow. Positioned imperatively via `handleRef`
+ * so selection changes do not need a React re-render.
+ */
+function FillHandlePortal({ handleRef, onMouseDown }) {
 	return createPortal(
 		<span
+			ref={handleRef}
 			role="button"
 			tabIndex={-1}
-			style={{ top: coords.top, left: coords.left }}
+			hidden
+			style={{ top: 0, left: 0 }}
 			className="border-primary bg-primary fixed z-[70] h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 cursor-crosshair rounded-full border-2"
 			title="Drag to fill cells below"
 			aria-label="Fill handle"
@@ -109,6 +96,12 @@ function FillHandlePortal({ anchorEl, onMouseDown }) {
 		document.body
 	);
 }
+
+/** Tailwind data-attribute highlight classes (toggled imperatively on select). */
+const CELL_SEL_SURFACE =
+	'data-[sheet-sel]:bg-primary/15 data-[sheet-sel]:ring-primary/35 data-[sheet-sel]:ring-1 data-[sheet-sel]:ring-inset';
+const CELL_FILL_SURFACE =
+	'data-[sheet-fill]:bg-primary/25 data-[sheet-fill]:ring-primary/50 data-[sheet-fill]:ring-1 data-[sheet-fill]:ring-inset';
 
 const OVERLAY_PAD = 8;
 const OVERLAY_ESTIMATE = 240;
@@ -279,7 +272,8 @@ function SheetOverlay({
  * `{ id, field, value, patch: { [field]: qty, [unitKey]: unit } }`.
  * Column type `multi-select`: checkbox list (expense categories). Commit sends
  * `{ id, field, value, patch }` from `col.buildPatch(ids, primaryId)`.
- * Column type `actions`: `info` / `duplicate` / `delete` icon buttons.
+ * Column type `actions`: `info` / `duplicate` / `delete` / `reorder` icon buttons.
+ * `reorder` is ChevronUp/Down in one row; calls `onRequestReorder(row, 'up'|'down')`.
  * Optional `col.leading(row)` renders before those buttons (e.g. author
  * initials on shared profiles).
  * Expense category editor and title purchase-hint are portaled to
@@ -303,6 +297,7 @@ export function DataSheet({
 	onRequestDelete,
 	onRequestDuplicate,
 	onRequestInfo,
+	onRequestReorder,
 	onBulkDelete,
 	onSelectionChange,
 	selectable = false,
@@ -325,12 +320,15 @@ export function DataSheet({
 	const [draftUnit, setDraftUnit] = useState('');
 	const [selectedIds, setSelectedIds] = useState(() => new Set());
 	const selectionAnchorRef = useRef(null);
-	const [cellAnchor, setCellAnchor] = useState(null);
-	const [cellFocus, setCellFocus] = useState(null);
-	const [fillPreviewEnd, setFillPreviewEnd] = useState(null);
+	/** Cell selection lives in refs so highlight updates skip a full sheet re-render. */
+	const cellAnchorRef = useRef(null);
+	const cellFocusRef = useRef(null);
+	const fillPreviewEndRef = useRef(null);
+	const fillDragging = useRef(false);
 	const sheetRootRef = useRef(null);
-	const [isFillDragging, setIsFillDragging] = useState(false);
-	const [fillHandleEl, setFillHandleEl] = useState(null);
+	const fillHandleRef = useRef(null);
+	const paintedSelRef = useRef([]);
+	const paintedFillRef = useRef([]);
 	const [overlayAnchor, setOverlayAnchor] = useState(null);
 	const inputRef = useRef(null);
 	const editorRef = useRef(null);
@@ -338,7 +336,6 @@ export function DataSheet({
 	const skipBlurAction = useRef(false);
 	const editRef = useRef(null);
 	const autoEditKey = useRef(null);
-	const fillDragging = useRef(false);
 	editRef.current = edit;
 
 	const canMutate = !readOnly;
@@ -349,10 +346,25 @@ export function DataSheet({
 		canMutate ? columns.filter((c) => c.editable).map((c) => c.key) : []
 	);
 
-	const rowIndex = useCallback((id) => rows.findIndex((r) => r.id === id), [rows]);
-	const colIndex = useCallback((key) => columns.findIndex((c) => c.key === key), [columns]);
+	const rowIndexById = useMemo(() => {
+		const map = new Map();
+		for (let i = 0; i < rows.length; i++) map.set(rows[i].id, i);
+		return map;
+	}, [rows]);
+	const colIndexByKey = useMemo(() => {
+		const map = new Map();
+		for (let i = 0; i < columns.length; i++) map.set(columns[i].key, i);
+		return map;
+	}, [columns]);
 
-	const cellSelection = useMemo(() => {
+	const rowIndex = useCallback((id) => rowIndexById.get(id) ?? -1, [rowIndexById]);
+	const colIndex = useCallback((key) => colIndexByKey.get(key) ?? -1, [colIndexByKey]);
+
+	const isFillableCell = (col) => col.editable || col.type === 'status-icon';
+
+	const getCellSelection = useCallback(() => {
+		const cellAnchor = cellAnchorRef.current;
+		const cellFocus = cellFocusRef.current;
 		if (!cellAnchor || !cellFocus) return null;
 		const r1 = rowIndex(cellAnchor.rowId);
 		const r2 = rowIndex(cellFocus.rowId);
@@ -365,66 +377,124 @@ export function DataSheet({
 			minCol: Math.min(c1, c2),
 			maxCol: Math.max(c1, c2)
 		};
-	}, [cellAnchor, cellFocus, rowIndex, colIndex]);
+	}, [rowIndex, colIndex]);
 
-	const fillPreview = useMemo(() => {
+	const getFillPreview = useCallback(() => {
+		const fillPreviewEnd = fillPreviewEndRef.current;
+		const cellAnchor = cellAnchorRef.current;
 		if (!fillPreviewEnd || !cellAnchor) return null;
 		const r1 = rowIndex(cellAnchor.rowId);
 		const r2 = rowIndex(fillPreviewEnd.rowId);
 		if (r1 < 0 || r2 < 0) return null;
 		return { minRow: Math.min(r1, r2), maxRow: Math.max(r1, r2), colKey: cellAnchor.colKey };
-	}, [fillPreviewEnd, cellAnchor, rowIndex]);
+	}, [rowIndex]);
 
-	const isFillableCell = (col) => col.editable || col.type === 'status-icon';
+	const clearPaintedAttrs = (listRef, attr) => {
+		for (const el of listRef.current) {
+			el.removeAttribute(attr);
+		}
+		listRef.current = [];
+	};
 
-	const fillHandleCell = useMemo(() => {
-		if (!cellAnchor || !cellSelection || isFillDragging) return null;
-		const anchorCol = colIndex(cellAnchor.colKey);
-		if (anchorCol < 0) return null;
-		if (anchorCol < cellSelection.minCol || anchorCol > cellSelection.maxCol) return null;
-		const col = columns.find((c) => c.key === cellAnchor.colKey);
-		if (!col || !isFillableCell(col)) return null;
-		return {
-			rowId: rows[cellSelection.maxRow]?.id,
-			colKey: cellAnchor.colKey
+	const paintCellHighlights = useCallback(() => {
+		const table = tableRef.current;
+		clearPaintedAttrs(paintedSelRef, 'data-sheet-sel');
+		clearPaintedAttrs(paintedFillRef, 'data-sheet-fill');
+
+		const handle = fillHandleRef.current;
+		const hideHandle = () => {
+			if (handle) handle.hidden = true;
 		};
-	}, [cellAnchor, cellSelection, columns, rows, colIndex, isFillDragging]);
 
-	const isCellInSelection = (rowId, colKey) => {
-		if (fillPreview) {
-			const ri = rowIndex(rowId);
-			const ci = colIndex(colKey);
-			if (
-				ci === colIndex(fillPreview.colKey) &&
-				ri >= fillPreview.minRow &&
-				ri <= fillPreview.maxRow
-			) {
-				return true;
+		if (!table) {
+			hideHandle();
+			return;
+		}
+
+		const cellAnchor = cellAnchorRef.current;
+		const selection = getCellSelection();
+		const fillPreview = getFillPreview();
+		const dragging = fillDragging.current;
+		const fillColIndex = fillPreview ? colIndex(fillPreview.colKey) : -1;
+
+		const mark = (rowId, colKey, attr, listRef) => {
+			const el = table.querySelector(
+				`tr[data-row-id="${CSS.escape(String(rowId))}"] td[data-col-key="${CSS.escape(String(colKey))}"]`
+			);
+			if (!el) return;
+			el.setAttribute(attr, '');
+			listRef.current.push(el);
+		};
+
+		if (fillPreview && dragging) {
+			for (let r = fillPreview.minRow; r <= fillPreview.maxRow; r++) {
+				const row = rows[r];
+				if (row) mark(row.id, fillPreview.colKey, 'data-sheet-fill', paintedFillRef);
 			}
 		}
-		if (!cellSelection) return false;
-		const ri = rowIndex(rowId);
-		const ci = colIndex(colKey);
-		if (ri < 0 || ci < 0) return false;
-		return (
-			ri >= cellSelection.minRow &&
-			ri <= cellSelection.maxRow &&
-			ci >= cellSelection.minCol &&
-			ci <= cellSelection.maxCol
-		);
-	};
 
-	const isFillPreviewCell = (rowId, colKey) => {
-		if (!fillPreview) return false;
-		const ri = rowIndex(rowId);
-		if (ri < 0 || colKey !== fillPreview.colKey) return false;
-		return ri >= fillPreview.minRow && ri <= fillPreview.maxRow;
-	};
+		if (selection) {
+			for (let r = selection.minRow; r <= selection.maxRow; r++) {
+				const row = rows[r];
+				if (!row) continue;
+				for (let c = selection.minCol; c <= selection.maxCol; c++) {
+					const col = columns[c];
+					if (!col) continue;
+					if (
+						fillPreview &&
+						dragging &&
+						c === fillColIndex &&
+						r >= fillPreview.minRow &&
+						r <= fillPreview.maxRow
+					) {
+						continue;
+					}
+					mark(row.id, col.key, 'data-sheet-sel', paintedSelRef);
+				}
+			}
+		}
+
+		// Fill handle on bottom-right of selection (hidden while editing or dragging).
+		if (!cellAnchor || !selection || dragging || editRef.current) {
+			hideHandle();
+			return;
+		}
+		const anchorCol = colIndex(cellAnchor.colKey);
+		if (anchorCol < selection.minCol || anchorCol > selection.maxCol) {
+			hideHandle();
+			return;
+		}
+		const col = columns.find((c) => c.key === cellAnchor.colKey);
+		if (!col || !isFillableCell(col)) {
+			hideHandle();
+			return;
+		}
+		const handleRowId = rows[selection.maxRow]?.id;
+		if (handleRowId == null || !handle) {
+			hideHandle();
+			return;
+		}
+		const anchorEl = table.querySelector(
+			`tr[data-row-id="${CSS.escape(String(handleRowId))}"] td[data-col-key="${CSS.escape(String(cellAnchor.colKey))}"]`
+		);
+		if (!anchorEl) {
+			hideHandle();
+			return;
+		}
+		const rect = anchorEl.getBoundingClientRect();
+		handle.style.top = `${rect.bottom}px`;
+		handle.style.left = `${rect.right}px`;
+		handle.hidden = false;
+	}, [getCellSelection, getFillPreview, colIndex, rows, columns]);
+
+	const paintRef = useRef(paintCellHighlights);
+	paintRef.current = paintCellHighlights;
 
 	const clearCellSelection = () => {
-		setCellAnchor(null);
-		setCellFocus(null);
-		setFillPreviewEnd(null);
+		cellAnchorRef.current = null;
+		cellFocusRef.current = null;
+		fillPreviewEndRef.current = null;
+		paintRef.current();
 	};
 
 	const rowIdAtClientY = useCallback((clientY) => {
@@ -440,9 +510,33 @@ export function DataSheet({
 		return null;
 	}, []);
 
+	useLayoutEffect(() => {
+		paintCellHighlights();
+	}, [paintCellHighlights]);
+
 	useEffect(() => {
-		setCellAnchor((prev) => (prev && rowIds.has(prev.rowId) ? prev : null));
-		setCellFocus((prev) => (prev && rowIds.has(prev.rowId) ? prev : null));
+		const onScrollOrResize = () => paintRef.current();
+		window.addEventListener('scroll', onScrollOrResize, true);
+		window.addEventListener('resize', onScrollOrResize);
+		return () => {
+			window.removeEventListener('scroll', onScrollOrResize, true);
+			window.removeEventListener('resize', onScrollOrResize);
+		};
+	}, []);
+
+	useEffect(() => {
+		let changed = false;
+		const a = cellAnchorRef.current;
+		const f = cellFocusRef.current;
+		if (a && !rowIds.has(a.rowId)) {
+			cellAnchorRef.current = null;
+			changed = true;
+		}
+		if (f && !rowIds.has(f.rowId)) {
+			cellFocusRef.current = null;
+			changed = true;
+		}
+		if (changed) paintRef.current();
 	}, [rowIds]);
 
 	useEffect(() => {
@@ -653,38 +747,42 @@ export function DataSheet({
 			commitForRow(targetRow, source.colKey, sourceValue, sourceUnit, col);
 		}
 
-		setCellFocus({ rowId: end.rowId, colKey: source.colKey });
+		cellFocusRef.current = { rowId: end.rowId, colKey: source.colKey };
+		paintRef.current();
 	};
 
 	const startFillDrag = (e) => {
 		e.preventDefault();
 		e.stopPropagation();
+		const cellAnchor = cellAnchorRef.current;
 		if (!cellAnchor || saving) return;
 		const col = columns.find((c) => c.key === cellAnchor.colKey);
 		if (!col || !isFillableCell(col)) return;
 
 		const source = { ...cellAnchor };
 		fillDragging.current = true;
-		setIsFillDragging(true);
-		setFillPreviewEnd(source);
+		fillPreviewEndRef.current = source;
+		paintRef.current();
 
 		const onMove = (ev) => {
 			const rowId = rowIdAtClientY(ev.clientY);
 			if (rowId == null) return;
 			const end = { rowId, colKey: source.colKey };
-			setFillPreviewEnd(end);
-			setCellFocus(end);
+			fillPreviewEndRef.current = end;
+			cellFocusRef.current = end;
+			paintRef.current();
 		};
 
 		const onUp = (ev) => {
 			document.removeEventListener('mousemove', onMove);
 			document.removeEventListener('mouseup', onUp);
 			fillDragging.current = false;
-			setIsFillDragging(false);
 			const rowId = rowIdAtClientY(ev.clientY);
-			const end = rowId != null ? { rowId, colKey: source.colKey } : fillPreviewEnd || source;
-			setFillPreviewEnd(null);
+			const end =
+				rowId != null ? { rowId, colKey: source.colKey } : fillPreviewEndRef.current || source;
+			fillPreviewEndRef.current = null;
 			applyFill(source, end);
+			paintRef.current();
 		};
 
 		document.addEventListener('mousemove', onMove);
@@ -723,20 +821,31 @@ export function DataSheet({
 		cancelEdit();
 	};
 
+	const commitEditRef = useRef(commitEdit);
+	commitEditRef.current = commitEdit;
+
 	const handleCellSelect = (e, row, col) => {
 		if (fillDragging.current) return;
-		if (edit) {
-			// Commit before moving selection; suppress blur so we don't double-commit.
+		const leavingEdit = Boolean(edit);
+		if (leavingEdit) {
+			// Suppress blur commit; flush selection first, then commit after paint.
 			skipBlurAction.current = true;
-			commitEdit();
 		}
-		if (!isFillableCell(col)) return;
-		const point = { rowId: row.id, colKey: col.key };
-		if (e.shiftKey && cellAnchor) {
-			setCellFocus(point);
-		} else {
-			setCellAnchor(point);
-			setCellFocus(point);
+		if (isFillableCell(col)) {
+			const point = { rowId: row.id, colKey: col.key };
+			if (e.shiftKey && cellAnchorRef.current) {
+				cellFocusRef.current = point;
+			} else {
+				cellAnchorRef.current = point;
+				cellFocusRef.current = point;
+			}
+			// Imperative highlight — avoids re-rendering every row/cell.
+			paintRef.current();
+		}
+		if (leavingEdit) {
+			requestAnimationFrame(() => {
+				commitEditRef.current();
+			});
 		}
 	};
 
@@ -772,22 +881,16 @@ export function DataSheet({
 				setEdit(null);
 				setDraft('');
 				setDraftUnit('');
-				setCellAnchor(null);
-				setCellFocus(null);
-				setFillPreviewEnd(null);
+				clearCellSelection();
 				return;
 			}
-			setCellAnchor(null);
-			setCellFocus(null);
-			setFillPreviewEnd(null);
+			clearCellSelection();
 		};
 		const onDocPointerDown = (e) => {
 			if (editRef.current) return;
 			const root = sheetRootRef.current;
 			if (!root || root.contains(e.target)) return;
-			setCellAnchor(null);
-			setCellFocus(null);
-			setFillPreviewEnd(null);
+			clearCellSelection();
 		};
 		window.addEventListener('keydown', onWindowKeyDown);
 		document.addEventListener('pointerdown', onDocPointerDown, true);
@@ -829,55 +932,80 @@ export function DataSheet({
 	const renderActions = (row, col) => {
 		const actions = col.actions || (col.type === 'action-delete' ? ['delete'] : []);
 		const leading = typeof col.leading === 'function' ? col.leading(row) : col.leading;
+		const reorderBusy = saving || adding || pendingCells?.[row.id]?.includes?.('day_order');
+		const canReorder = canMutate && actions.includes('reorder') && onRequestReorder;
 		return (
 			<td key={col.key} className={cn('px-0.5 py-0.5', col.className)}>
 				<div className="flex items-center justify-center gap-0.5">
+					{canReorder ? (
+						<div
+							className={cn(
+								'flex items-center gap-0.5 transition-opacity',
+								// Hover devices: reveal on row hover/focus. Touch (no hover): always visible.
+								'opacity-100',
+								'[@media(hover:hover)]:opacity-0',
+								'[@media(hover:hover)]:group-hover/row:opacity-100',
+								'[@media(hover:hover)]:group-focus-within/row:opacity-100'
+							)}
+						>
+							<button
+								type="button"
+								className={SHEET_ICON_BTN}
+								onClick={() => onRequestReorder(row, 'up')}
+								disabled={reorderBusy}
+								aria-label={`Move ${rowLabel(row)} up`}
+								title="Move up"
+							>
+								<ChevronUp size={14} />
+							</button>
+							<button
+								type="button"
+								className={SHEET_ICON_BTN}
+								onClick={() => onRequestReorder(row, 'down')}
+								disabled={reorderBusy}
+								aria-label={`Move ${rowLabel(row)} down`}
+								title="Move down"
+							>
+								<ChevronDown size={14} />
+							</button>
+						</div>
+					) : null}
 					{leading}
 					{actions.includes('info') && (
-						<Button
-							variant="ghost"
-							size="icon"
-							className="h-7 w-7"
+						<button
+							type="button"
+							className={SHEET_ICON_BTN}
 							onClick={() => onRequestInfo?.(row)}
 							aria-label={`Info for ${rowLabel(row)}`}
 						>
 							<Info size={14} />
-						</Button>
+						</button>
 					)}
 					{canMutate && actions.includes('duplicate') && (
-						<Button
-							variant="ghost"
-							size="icon"
-							className="h-7 w-7"
+						<button
+							type="button"
+							className={SHEET_ICON_BTN}
 							onClick={() => onRequestDuplicate?.(row)}
 							disabled={adding || saving}
 							aria-label={`Duplicate ${rowLabel(row)}`}
 						>
 							<CopyPlus size={14} />
-						</Button>
+						</button>
 					)}
 					{canMutate && actions.includes('delete') && (
-						<Button
-							variant="ghost"
-							size="icon"
-							className="h-7 w-7"
+						<button
+							type="button"
+							className={SHEET_ICON_BTN}
 							onClick={() => onRequestDelete?.(row)}
 							aria-label={`Delete ${rowLabel(row)}`}
 						>
 							<Trash2 size={14} />
-						</Button>
+						</button>
 					)}
 				</div>
 			</td>
 		);
 	};
-
-	const showFillHandle =
-		fillHandleCell && fillHandleCell.rowId === rows[cellSelection?.maxRow ?? -1]?.id && !edit;
-
-	useLayoutEffect(() => {
-		if (!showFillHandle) setFillHandleEl(null);
-	}, [showFillHandle, fillHandleCell?.rowId, fillHandleCell?.colKey]);
 
 	return (
 		<div ref={sheetRootRef} className="border-line bg-surface overflow-hidden rounded-md border">
@@ -1009,7 +1137,7 @@ export function DataSheet({
 									data-row-id={row.id}
 									aria-busy={pendingRow || undefined}
 									className={cn(
-										'border-line border-b transition-colors duration-200 last:border-b-0',
+										'group/row border-line border-b transition-colors duration-200 last:border-b-0',
 										selected ? 'bg-primary/8' : 'hover:bg-surface-2/60',
 										pendingRow && 'bg-primary/[0.04]'
 									)}
@@ -1264,17 +1392,12 @@ export function DataSheet({
 
 										const shown = displayCell(row, col);
 										const cellPending = isCellPending(row.id, col.key);
-										const cellSelected = isCellInSelection(row.id, col.key);
-										const fillTarget = isFillPreviewCell(row.id, col.key);
-										const hasFillHandle =
-											showFillHandle &&
-											fillHandleCell?.rowId === row.id &&
-											fillHandleCell?.colKey === col.key;
 										const cornerBadge = col.cornerBadge?.(row) ?? null;
 										const allowTruncate = col.truncate !== false;
+										const fillable = isFillableCell(col);
 										const titleText = cellPending
 											? 'Saving…'
-											: isFillableCell(col)
+											: fillable
 												? 'Click to select · double-click to edit · drag fill handle to copy down'
 												: col.type === 'status-icon'
 													? row[col.key]
@@ -1283,20 +1406,18 @@ export function DataSheet({
 										return (
 											<td
 												key={col.key}
-												ref={hasFillHandle && !cellPending ? setFillHandleEl : undefined}
+												data-col-key={col.key}
 												aria-busy={cellPending || undefined}
 												className={cn(
 													'text-fg transition-opacity duration-200 select-none',
 													// truncate → overflow:hidden clips the fill handle; keep ellipsis on inner span
-													allowTruncate && !cornerBadge && !hasFillHandle && 'truncate',
+													allowTruncate && !cornerBadge && 'truncate',
 													(cellPending || cornerBadge) && 'relative',
 													cellPad,
 													col.align === 'right' && 'text-right tabular-nums',
-													isFillableCell(col) && !cellPending && 'hover:bg-primary/5 cursor-cell',
-													cellSelected && 'bg-primary/15 ring-primary/35 ring-1 ring-inset',
-													fillTarget &&
-														isFillDragging &&
-														'bg-primary/25 ring-primary/50 ring-1 ring-inset',
+													fillable && !cellPending && 'hover:bg-primary/5 cursor-cell',
+													fillable && CELL_SEL_SURFACE,
+													fillable && CELL_FILL_SURFACE,
 													cellPending && 'bg-primary/10',
 													!col.editable && col.type !== 'status-icon' && 'text-muted',
 													col.type === 'status-icon' && 'text-center',
@@ -1345,9 +1466,7 @@ export function DataSheet({
 					</Button>
 				</div>
 			)}
-			{showFillHandle ? (
-				<FillHandlePortal anchorEl={fillHandleEl} onMouseDown={startFillDrag} />
-			) : null}
+			<FillHandlePortal handleRef={fillHandleRef} onMouseDown={startFillDrag} />
 		</div>
 	);
 }

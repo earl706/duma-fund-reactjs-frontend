@@ -2,24 +2,32 @@ import {
 	addDays,
 	addMonths,
 	addWeeks,
+	addYears,
 	eachDayOfInterval,
+	eachMonthOfInterval,
 	endOfMonth,
 	endOfWeek,
+	endOfYear,
 	format,
 	isSameDay,
 	isSameMonth,
+	isSameWeek,
+	isSameYear,
 	parseISO,
 	startOfDay,
 	startOfMonth,
 	startOfWeek,
+	startOfYear,
 	subMonths,
-	subWeeks
+	subWeeks,
+	subYears
 } from 'date-fns';
 
 export const CAL_GRAINS = [
 	{ value: 'day', label: 'D', title: 'Day' },
 	{ value: 'week', label: 'W', title: 'Week' },
-	{ value: 'month', label: 'M', title: 'Month' }
+	{ value: 'month', label: 'M', title: 'Month' },
+	{ value: 'year', label: 'Y', title: 'Year' }
 ];
 
 export function parseAnchorDate(raw) {
@@ -48,6 +56,14 @@ export function weekDays(anchor) {
 	return eachDayOfInterval({ start, end });
 }
 
+/** Twelve month anchors (1st of each month) for the year grain. */
+export function yearMonths(anchor) {
+	return eachMonthOfInterval({
+		start: startOfYear(anchor),
+		end: endOfYear(anchor)
+	});
+}
+
 /** Inclusive date_effective fetch window for the current grain. */
 export function visibleRange(anchor, grain) {
 	if (grain === 'day') {
@@ -60,6 +76,9 @@ export function visibleRange(anchor, grain) {
 			end: endOfWeek(anchor, { weekStartsOn: 0 })
 		};
 	}
+	if (grain === 'year') {
+		return { start: startOfYear(anchor), end: endOfYear(anchor) };
+	}
 	const days = monthGridDays(anchor);
 	return { start: days[0], end: days[days.length - 1] };
 }
@@ -68,18 +87,21 @@ export function shiftAnchor(anchor, grain, direction) {
 	const delta = direction < 0 ? -1 : 1;
 	if (grain === 'day') return addDays(anchor, delta);
 	if (grain === 'week') return delta < 0 ? subWeeks(anchor, 1) : addWeeks(anchor, 1);
+	if (grain === 'year') return delta < 0 ? subYears(anchor, 1) : addYears(anchor, 1);
 	return delta < 0 ? subMonths(anchor, 1) : addMonths(anchor, 1);
 }
 
 export function rangeTitle(anchor, grain) {
 	if (grain === 'day') return format(anchor, 'MMM d, yyyy');
 	if (grain === 'week') {
-		const { start, end } = visibleRange(anchor, 'week');
+		const start = startOfWeek(anchor, { weekStartsOn: 0 });
+		const end = endOfWeek(anchor, { weekStartsOn: 0 });
 		if (format(start, 'yyyy-MM') === format(end, 'yyyy-MM')) {
 			return `${format(start, 'MMM d')} – ${format(end, 'd, yyyy')}`;
 		}
 		return `${format(start, 'MMM d')} – ${format(end, 'MMM d, yyyy')}`;
 	}
+	if (grain === 'year') return format(anchor, 'yyyy');
 	return format(anchor, 'MMMM yyyy');
 }
 
@@ -121,6 +143,47 @@ export function dayTotals(txns) {
 	return { moneyIn, moneyOut, net: moneyIn - moneyOut };
 }
 
+/** Totals for transactions whose date_effective falls in anchor's Sun–Sat week. */
+export function weekTotals(transactions, anchor) {
+	const filtered = [];
+	for (const txn of transactions || []) {
+		if (!txn.date_effective) continue;
+		const dt = parseISO(txn.date_effective);
+		if (Number.isNaN(dt.getTime())) continue;
+		if (isSameWeek(dt, anchor, { weekStartsOn: 0 })) filtered.push(txn);
+	}
+	return dayTotals(filtered);
+}
+
+/** Totals for transactions whose date_effective falls in anchor's calendar month. */
+export function monthTotals(transactions, anchor) {
+	return monthTxnStats(transactions, anchor);
+}
+
+/** In/out/net + count for transactions in anchor's calendar month. */
+export function monthTxnStats(transactions, anchor) {
+	const filtered = [];
+	for (const txn of transactions || []) {
+		if (!txn.date_effective) continue;
+		const dt = parseISO(txn.date_effective);
+		if (Number.isNaN(dt.getTime())) continue;
+		if (isSameMonth(dt, anchor)) filtered.push(txn);
+	}
+	return { ...dayTotals(filtered), count: filtered.length };
+}
+
+/** Totals for transactions whose date_effective falls in anchor's calendar year. */
+export function yearTotals(transactions, anchor) {
+	const filtered = [];
+	for (const txn of transactions || []) {
+		if (!txn.date_effective) continue;
+		const dt = parseISO(txn.date_effective);
+		if (Number.isNaN(dt.getTime())) continue;
+		if (isSameYear(dt, anchor)) filtered.push(txn);
+	}
+	return dayTotals(filtered);
+}
+
 /** Up to `limit` newest transactions for a day cell (default 3). */
 export function latestPreview(txns, limit = 3) {
 	return (txns || []).slice(0, limit);
@@ -158,4 +221,4 @@ export function sameDay(a, b) {
 	return isSameDay(a, b);
 }
 
-export { startOfDay, format, addDays };
+export { startOfDay, startOfMonth, format, addDays };

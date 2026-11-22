@@ -7,6 +7,7 @@ import {
 	CalendarClock,
 	CalendarDays,
 	CalendarRange,
+	Calendars,
 	CheckCircle2,
 	List,
 	ListFilter
@@ -27,11 +28,13 @@ const KNOWN_ICONS = {
 	'grain:day': CalendarDays,
 	'grain:week': CalendarRange,
 	'grain:month': Calendar,
+	'grain:year': Calendars,
 	list: List,
 	calendar: Calendar,
 	day: CalendarDays,
 	week: CalendarRange,
-	month: Calendar
+	month: Calendar,
+	year: Calendars
 };
 
 function resolveIcon(groupKey, opt) {

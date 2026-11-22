@@ -11,15 +11,21 @@ import {
 	groupByDate,
 	latestPreview,
 	monthGridDays,
+	monthTotals,
+	monthTxnStats,
 	rangeTitle,
 	sameDay,
 	sameMonth,
 	shiftAnchor,
 	toISODate,
-	weekDays
+	weekDays,
+	weekTotals,
+	yearMonths,
+	yearTotals
 } from './transactionCalendar';
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const WEEKDAY_LETTERS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 
 function NetLabel({ value, className }) {
 	const amount = Number(value);
@@ -35,6 +41,54 @@ function NetLabel({ value, className }) {
 	);
 	if (!compact) return label;
 	return <Tooltip content={`${prefix}${full}`}>{label}</Tooltip>;
+}
+
+function SignedMoney({ value, tone, className }) {
+	const amount = Number(value) || 0;
+	const { display, full, compact } = costParts(Math.abs(amount));
+	const prefix = tone === 'in' ? '+' : '−';
+	const label = (
+		<span className={cn('tabular-nums', tone === 'in' ? 'text-success' : 'text-danger', className)}>
+			{prefix}
+			{display}
+		</span>
+	);
+	if (!compact || display === '—') return label;
+	return <Tooltip content={`${prefix}${full}`}>{label}</Tooltip>;
+}
+
+/** Two-column period aggregate: net, then +/− stacked. */
+function PeriodAggregate({ totals, label = 'Period totals' }) {
+	const net = Number(totals.net) || 0;
+	const { display: netDisplay, full: netFull, compact: netCompact } = costParts(Math.abs(net));
+	const netPrefix = net > 0 ? '+' : net < 0 ? '−' : '';
+	const netLabel = (
+		<span
+			className={cn(
+				'text-[12px] font-semibold tabular-nums sm:text-[24px]',
+				net > 0 ? 'text-success' : net < 0 ? 'text-danger' : 'text-muted'
+			)}
+		>
+			{netPrefix}
+			{netDisplay}
+		</span>
+	);
+	return (
+		<div
+			className="border-line ml-2 flex shrink-0 items-center gap-2 border-l pl-2"
+			aria-label={label}
+		>
+			{netCompact && netDisplay !== '—' ? (
+				<Tooltip content={`${netPrefix}${netFull}`}>{netLabel}</Tooltip>
+			) : (
+				netLabel
+			)}
+			<div className="flex flex-col items-start leading-tight">
+				<SignedMoney value={totals.moneyIn} tone="in" className="text-[10px] font-semibold" />
+				<SignedMoney value={totals.moneyOut} tone="out" className="text-[10px] font-semibold" />
+			</div>
+		</div>
+	);
 }
 
 function DayCell({ day, anchor, txns, compact, aggregateOnly, onOpen }) {
@@ -102,7 +156,7 @@ function DayCell({ day, anchor, txns, compact, aggregateOnly, onOpen }) {
 							<NetLabel
 								value={totals.net}
 								className={cn(
-									'truncate text-[10px] font-semibold',
+									'truncate text-[10px] font-[1000]',
 									totals.net > 0 ? 'text-success' : 'text-danger'
 								)}
 							/>
@@ -121,7 +175,7 @@ function DayCell({ day, anchor, txns, compact, aggregateOnly, onOpen }) {
 									amount={txn.amount}
 									type={txn.type}
 									row={txn}
-									className="shrink-0 text-[10px] font-normal"
+									className="shrink-0 text-[10px] font-[150]"
 								/>
 							</li>
 						))}
@@ -133,9 +187,78 @@ function DayCell({ day, anchor, txns, compact, aggregateOnly, onOpen }) {
 	);
 }
 
+function YearMonthCard({ monthAnchor, transactions, onOpenMonth }) {
+	const days = useMemo(() => monthGridDays(monthAnchor), [monthAnchor]);
+	const stats = useMemo(
+		() => monthTxnStats(transactions, monthAnchor),
+		[transactions, monthAnchor]
+	);
+	const today = new Date();
+	const hasNet = Number.isFinite(Number(stats.net)) && Number(stats.net) !== 0;
+	const monthLabel = monthAnchor.toLocaleString(undefined, { month: 'long' });
+
+	return (
+		<button
+			type="button"
+			onClick={() => onOpenMonth(monthAnchor)}
+			className={cn(
+				'hover:bg-surface-2/60 focus-visible:bg-surface-2 flex cursor-pointer flex-col gap-1 rounded-md p-1.5',
+				'text-left transition-colors focus-visible:outline-none'
+			)}
+			aria-label={`Open ${monthLabel}`}
+		>
+			<div className="flex items-baseline justify-between gap-1">
+				<span className="text-primary text-sm font-semibold">{monthLabel}</span>
+				<div className="flex min-w-0 items-baseline gap-1">
+					{hasNet ? (
+						<NetLabel
+							value={stats.net}
+							className={cn(
+								'truncate text-[10px] font-semibold',
+								stats.net > 0 ? 'text-success' : 'text-danger'
+							)}
+						/>
+					) : null}
+					{stats.count > 0 ? (
+						<span className="text-muted-fg p-1 text-[10px] tabular-nums">{stats.count}</span>
+					) : null}
+				</div>
+			</div>
+			<div className="grid grid-cols-7 gap-y-0.5">
+				{WEEKDAY_LETTERS.map((letter, i) => (
+					<span
+						key={`${letter}-${i}`}
+						className="text-muted text-center text-[9px] leading-none font-medium"
+					>
+						{letter}
+					</span>
+				))}
+				{days.map((day) => {
+					const inMonth = sameMonth(day, monthAnchor);
+					const isToday = sameDay(day, today);
+					return (
+						<span
+							key={toISODate(day)}
+							className={cn(
+								'inline-flex h-5 items-center justify-center text-[10px] leading-none tabular-nums',
+								isToday &&
+									'bg-primary text-primary-fg mx-auto aspect-square w-5 rounded-full font-semibold',
+								!isToday && (inMonth ? 'text-fg' : 'text-muted/45')
+							)}
+						>
+							{day.getDate()}
+						</span>
+					);
+				})}
+			</div>
+		</button>
+	);
+}
+
 /**
- * Apple-style month / week / day calendar for the ledger.
- * Month & week cells open a day modal; day grain shows detail inline.
+ * Apple-style month / week / day / year calendar for the ledger.
+ * Month & week cells open a day modal; day grain shows detail inline;
+ * year mini-months open the month grain.
  */
 export function TransactionCalendarView({
 	anchor,
@@ -146,24 +269,42 @@ export function TransactionCalendarView({
 	loading,
 	error,
 	/** Mobile: short cells with day ± only (no txn preview lines). */
-	aggregateOnly = false
+	aggregateOnly = false,
+	canEdit = false,
+	onReorder,
+	reorderingId = null
 }) {
 	const [modalDate, setModalDate] = useState(null);
 	const byDate = useMemo(() => groupByDate(transactions), [transactions]);
 	const title = rangeTitle(anchor, grain);
+	const headerTotals = useMemo(() => {
+		if (grain === 'day') return null;
+		if (grain === 'year') return yearTotals(transactions, anchor);
+		if (grain === 'week') return weekTotals(transactions, anchor);
+		return monthTotals(transactions, anchor);
+	}, [grain, transactions, anchor]);
+
+	const headerTotalsLabel =
+		grain === 'year' ? 'Year totals' : grain === 'week' ? 'Week totals' : 'Month totals';
 
 	const monthDays = useMemo(
 		() => (grain === 'month' ? monthGridDays(anchor) : []),
 		[anchor, grain]
 	);
 	const week = useMemo(() => (grain === 'week' ? weekDays(anchor) : []), [anchor, grain]);
+	const months = useMemo(() => (grain === 'year' ? yearMonths(anchor) : []), [anchor, grain]);
 	const dayISO = toISODate(anchor);
 	const dayTxns = byDate.get(dayISO) || [];
 
+	const openMonth = (monthAnchor) => {
+		onAnchorChange(monthAnchor);
+		onGrainChange('month');
+	};
+
 	return (
-		<div className="flex min-h-0 flex-col gap-3">
+		<div className="flex min-h-0 flex-col gap-1">
 			<div className="flex flex-wrap items-center justify-between gap-2">
-				<div className="flex items-center gap-1">
+				<div className="flex min-w-0 items-center gap-1">
 					<Button
 						type="button"
 						variant="ghost"
@@ -183,6 +324,9 @@ export function TransactionCalendarView({
 						<ChevronRight size={18} />
 					</Button>
 					<p className="text-fg min-w-0 truncate text-sm font-semibold sm:text-base">{title}</p>
+					{headerTotals ? (
+						<PeriodAggregate totals={headerTotals} label={headerTotalsLabel} />
+					) : null}
 				</div>
 				<div className="flex flex-wrap items-center gap-2">
 					<Button
@@ -196,6 +340,7 @@ export function TransactionCalendarView({
 					<IconChoiceGroup
 						groupKey="grain"
 						options={CAL_GRAINS}
+						choiceClassName="!px-1 !min-w-[2rem]"
 						value={grain}
 						onChange={onGrainChange}
 						ariaLabel="Calendar grain"
@@ -210,7 +355,13 @@ export function TransactionCalendarView({
 						description="Try switching views or refreshing."
 					/>
 				) : grain === 'day' ? (
-					<TransactionDayDetailBody dateISO={dayISO} transactions={dayTxns} />
+					<TransactionDayDetailBody
+						dateISO={dayISO}
+						transactions={dayTxns}
+						canEdit={canEdit}
+						onReorder={onReorder}
+						reorderingId={reorderingId}
+					/>
 				) : grain === 'week' ? (
 					<div className="border-line overflow-hidden rounded-lg border">
 						<div className="border-line bg-surface-2 grid grid-cols-7 border-b">
@@ -239,6 +390,17 @@ export function TransactionCalendarView({
 								);
 							})}
 						</div>
+					</div>
+				) : grain === 'year' ? (
+					<div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+						{months.map((monthAnchor) => (
+							<YearMonthCard
+								key={toISODate(monthAnchor)}
+								monthAnchor={monthAnchor}
+								transactions={transactions}
+								onOpenMonth={openMonth}
+							/>
+						))}
 					</div>
 				) : (
 					<div className="border-line overflow-hidden rounded-lg border">
@@ -277,6 +439,9 @@ export function TransactionCalendarView({
 				onClose={() => setModalDate(null)}
 				dateISO={modalDate}
 				transactions={modalDate ? byDate.get(modalDate) || [] : []}
+				canEdit={canEdit}
+				onReorder={onReorder}
+				reorderingId={reorderingId}
 			/>
 		</div>
 	);

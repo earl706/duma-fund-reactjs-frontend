@@ -1,4 +1,6 @@
+import { useMemo } from 'react';
 import { Link } from 'react-router-dom';
+import { ChevronDown, ChevronUp } from 'lucide-react';
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 
 import { cn, formatCost, formatDate } from '../../lib/format';
@@ -80,12 +82,29 @@ function HourlyFlowChart({ points }) {
 	);
 }
 
+function sortByDayOrder(transactions) {
+	return [...(transactions || [])].sort((a, b) => {
+		const ao = Number(a.day_order) || 0;
+		const bo = Number(b.day_order) || 0;
+		if (ao !== bo) return ao - bo;
+		return (b.id || 0) - (a.id || 0);
+	});
+}
+
 /** Shared day summary: totals, fixed-height hourly chart, full txn list. */
-export function TransactionDayDetailBody({ dateISO, transactions, onNavigate }) {
-	const txns = transactions || [];
+export function TransactionDayDetailBody({
+	dateISO,
+	transactions,
+	onNavigate,
+	canEdit = false,
+	onReorder,
+	reorderingId = null
+}) {
+	const txns = useMemo(() => sortByDayOrder(transactions), [transactions]);
 	const totals = dayTotals(txns);
 	const points = hourSeries(txns);
 	const label = dateISO ? formatDate(dateISO) : '—';
+	const busy = reorderingId != null;
 
 	return (
 		<div className="flex flex-col gap-4">
@@ -136,10 +155,36 @@ export function TransactionDayDetailBody({ dateISO, transactions, onNavigate }) 
 				) : (
 					<ul className="divide-line border-line divide-y overflow-hidden rounded-lg border">
 						{txns.map((txn) => (
-							<li key={txn.id}>
+							<li key={txn.id} className="flex items-stretch gap-1">
+								{canEdit && onReorder ? (
+									<div className="border-line flex flex-col justify-center border-r px-0.5">
+										<Button
+											variant="ghost"
+											size="icon"
+											className="h-5 w-6"
+											disabled={busy}
+											onClick={() => onReorder(txn, 'up')}
+											aria-label={`Move ${txn.title || 'transaction'} up`}
+											title="Move up"
+										>
+											<ChevronUp size={14} />
+										</Button>
+										<Button
+											variant="ghost"
+											size="icon"
+											className="h-5 w-6"
+											disabled={busy}
+											onClick={() => onReorder(txn, 'down')}
+											aria-label={`Move ${txn.title || 'transaction'} down`}
+											title="Move down"
+										>
+											<ChevronDown size={14} />
+										</Button>
+									</div>
+								) : null}
 								<Link
 									to={`/transactions/${txn.id}`}
-									className="hover:bg-surface-2 flex items-center justify-between gap-3 px-3 py-2.5"
+									className="hover:bg-surface-2 flex min-w-0 flex-1 items-center justify-between gap-3 px-3 py-2.5"
 									onClick={() => onNavigate?.()}
 								>
 									<span className="text-fg min-w-0 truncate text-sm font-medium">
@@ -161,7 +206,15 @@ export function TransactionDayDetailBody({ dateISO, transactions, onNavigate }) 
 	);
 }
 
-export function TransactionDayDetailModal({ open, onClose, dateISO, transactions }) {
+export function TransactionDayDetailModal({
+	open,
+	onClose,
+	dateISO,
+	transactions,
+	canEdit = false,
+	onReorder,
+	reorderingId = null
+}) {
 	return (
 		<Modal
 			open={open}
@@ -181,6 +234,9 @@ export function TransactionDayDetailModal({ open, onClose, dateISO, transactions
 					dateISO={dateISO}
 					transactions={transactions}
 					onNavigate={onClose}
+					canEdit={canEdit}
+					onReorder={onReorder}
+					reorderingId={reorderingId}
 				/>
 			)}
 		</Modal>

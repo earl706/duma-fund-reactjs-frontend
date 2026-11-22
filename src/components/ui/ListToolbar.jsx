@@ -12,6 +12,7 @@ import { IconChoiceGroup } from './IconChoiceGroup';
  * @param {(value: string) => void} [props.onOrderingChange]
  * @param {{ value: string, label: string, icon?: import('lucide-react').LucideIcon }[]} [props.sortOptions]
  * @param {{ key: string, label: string, value: string, onChange: (v: string) => void, options: { value: string, label: string, title?: string, icon?: import('lucide-react').LucideIcon }[] }[]} [props.filters]
+ * @param {import('react').ReactNode} [props.leading] — beside filters (e.g. undo/redo icons)
  * @param {import('react').ReactNode} [props.trailing] — aligned with filter controls (e.g. view toggle)
  * @param {string} [props.className]
  */
@@ -23,6 +24,7 @@ export function ListToolbar({
 	onOrderingChange,
 	sortOptions = [],
 	filters = [],
+	leading = null,
 	trailing = null,
 	className
 }) {
@@ -50,6 +52,7 @@ export function ListToolbar({
 					</div>
 				)}
 				<div className="flex flex-wrap items-end gap-2">
+					{leading}
 					{sortOptions.length > 0 && onOrderingChange && (
 						<div className="space-y-1">
 							<p className="text-fg text-sm font-medium">Sort</p>

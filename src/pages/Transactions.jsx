@@ -1,7 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeftRight, BookUser, FileDown, FileUp, Plus, ScanLine } from 'lucide-react';
+import {
+	ArrowLeftRight,
+	BookUser,
+	FileDown,
+	FileUp,
+	Plus,
+	Redo2,
+	ScanLine,
+	Undo2
+} from 'lucide-react';
 
 import { cashSourceId, resolveSourceId, sourceSelectOptions } from '../lib/balanceSources';
 import { categoriesApi, sourcesApi, transactionsApi, useFinanceBalance } from '../lib/resources';
@@ -21,8 +30,16 @@ import {
 	resolveCategories,
 	serializeTransactionsCsv
 } from '../lib/transactionCsv';
+import {
+	buildTransactionSnapshot,
+	editBeforeFromRow,
+	recreateFromSnapshot,
+	snapshotFromBody
+} from '../lib/transactionHistory';
+import { moveTransaction } from '../lib/transactionReorder';
 import { toast } from '../stores/toastStore';
 import { useAuthStore } from '../stores/authStore';
+import { useLedgerHistoryStore } from '../stores/ledgerHistoryStore';
 import { useActiveProfileId, useCanEditLedger, useProfileStore } from '../stores/profileStore';
 import { useListControls } from '../hooks/useListControls';
 import { AccountsInformationModal } from '../components/finance/AccountsInformationModal';
@@ -62,7 +79,7 @@ const VIEW_OPTIONS = [
 	{ value: 'calendar', label: 'Calendar', title: 'Calendar view' }
 ];
 
-const CAL_VALUES = new Set(['day', 'week', 'month']);
+const CAL_VALUES = new Set(['day', 'week', 'month', 'year']);
 
 const TYPE_OPTIONS = [
 	{ value: 'expense', label: 'Expense' },
@@ -71,7 +88,7 @@ const TYPE_OPTIONS = [
 	{ value: 'transfer_out', label: 'Transfer out' }
 ];
 
-const DEFAULT_ORDERING = '-date_effective,-created_at';
+const DEFAULT_ORDERING = '-date_effective,day_order,-created_at';
 
 function SignedAmount({ amount, type, row, className }) {
 	return <LedgerAmount amount={amount} type={type} row={row} className={className} bold />;
@@ -97,6 +114,14 @@ function resolvePreferredView(user) {
 function applyViewParam(params, nextView, preferred) {
 	if (nextView === preferred) params.delete('view');
 	else params.set('view', nextView);
+}
+
+function isEditableHotkeyTarget(target) {
+	if (!target || !(target instanceof Element)) return false;
+	const tag = target.tagName;
+	if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return true;
+	if (target.isContentEditable) return true;
+	return Boolean(target.closest('[contenteditable="true"]'));
 }
 
 export default function TransactionsPage() {
@@ -179,7 +204,7 @@ export default function TransactionsPage() {
 			status: 'active',
 			date_effective__gte: toISODate(calRange.start),
 			date_effective__lte: toISODate(calRange.end),
-			ordering: '-date_effective,-created_at'
+			ordering: '-date_effective,day_order,-created_at'
 		}),
 		[calRange]
 	);
@@ -301,6 +326,8 @@ export default function TransactionsPage() {
 	const [importDraft, setImportDraft] = useState(null);
 	const [csvBusy, setCsvBusy] = useState(false);
 	const [csvProgress, setCsvProgress] = useState('');
+	const [deletePreparing, setDeletePreparing] = useState(false);
+	const [reorderingId, setReorderingId] = useState(null);
 	/** Row id → column keys waiting on PATCH (optimistic UI + spinner). */
 	const [pendingCells, setPendingCells] = useState({});
 	const fileInputRef = useRef(null);
@@ -313,6 +340,18 @@ export default function TransactionsPage() {
 		(s) => s.profiles.find((p) => p.id === s.activeProfileId)?.name
 	);
 
+	const pushHistory = useLedgerHistoryStore((s) => s.push);
+	const bindHistoryProfile = useLedgerHistoryStore((s) => s.bindProfile);
+	const undoHistory = useLedgerHistoryStore((s) => s.undo);
+	const redoHistory = useLedgerHistoryStore((s) => s.redo);
+	const historyBusy = useLedgerHistoryStore((s) => s.busy);
+	const canUndoHistory = useLedgerHistoryStore((s) => s.past.length > 0);
+	const canRedoHistory = useLedgerHistoryStore((s) => s.future.length > 0);
+
+	useEffect(() => {
+		bindHistoryProfile(profileId);
+	}, [profileId, bindHistoryProfile]);
+
 	useEffect(() => {
 		if (pendingFocusId == null) return;
 		if (!rows.some((r) => r.id === pendingFocusId)) return;
@@ -323,6 +362,71 @@ export default function TransactionsPage() {
 		});
 		setPendingFocusId(null);
 	}, [rows, pendingFocusId]);
+
+	const refreshAfterHistory = useCallback(async () => {
+		await queryClient.invalidateQueries({ queryKey: ['finance-transactions'] });
+		queryClient.invalidateQueries({ queryKey: ['finance-balance'] });
+		queryClient.invalidateQueries({ queryKey: ['finance-analytics'] });
+	}, [queryClient]);
+
+	const runUndo = useCallback(async () => {
+		if (!canEdit || historyBusy) return;
+		const ok = await undoHistory();
+		if (ok) await refreshAfterHistory();
+	}, [canEdit, historyBusy, undoHistory, refreshAfterHistory]);
+
+	const runRedo = useCallback(async () => {
+		if (!canEdit || historyBusy) return;
+		const ok = await redoHistory();
+		if (ok) await refreshAfterHistory();
+	}, [canEdit, historyBusy, redoHistory, refreshAfterHistory]);
+
+	useEffect(() => {
+		if (!canEdit) return undefined;
+		const onKey = (e) => {
+			if (!(e.metaKey || e.ctrlKey)) return;
+			if (isEditableHotkeyTarget(e.target)) return;
+			const key = e.key.toLowerCase();
+			if (key === 'z' && !e.shiftKey) {
+				e.preventDefault();
+				runUndo();
+				return;
+			}
+			if ((key === 'z' && e.shiftKey) || key === 'y') {
+				e.preventDefault();
+				runRedo();
+			}
+		};
+		window.addEventListener('keydown', onKey);
+		return () => window.removeEventListener('keydown', onKey);
+	}, [canEdit, runUndo, runRedo]);
+
+	const historyButtons = canEdit ? (
+		<div className="flex items-center gap-1">
+			<Button
+				type="button"
+				variant="secondary"
+				size="icon"
+				aria-label="Undo"
+				title="Undo"
+				disabled={!canUndoHistory || historyBusy}
+				onClick={runUndo}
+			>
+				<Undo2 size={16} />
+			</Button>
+			<Button
+				type="button"
+				variant="secondary"
+				size="icon"
+				aria-label="Redo"
+				title="Redo"
+				disabled={!canRedoHistory || historyBusy}
+				onClick={runRedo}
+			>
+				<Redo2 size={16} />
+			</Button>
+		</div>
+	) : null;
 
 	const createTxn = transactionsApi.useCreate({
 		onSuccess: (created) => {
@@ -353,7 +457,7 @@ export default function TransactionsPage() {
 			if (!defaultExpenseCategoryId) toast.error('Create an expense category first.');
 			return;
 		}
-		createTxn.mutate({
+		const body = {
 			type: 'expense',
 			title: 'Untitled',
 			amount: '0.00',
@@ -363,6 +467,16 @@ export default function TransactionsPage() {
 			status: 'active',
 			date_created: todayISO(),
 			date_effective: todayISO()
+		};
+		createTxn.mutate(body, {
+			onSuccess: (created) => {
+				if (created?.id == null) return;
+				pushHistory({
+					type: 'create',
+					id: created.id,
+					snapshot: snapshotFromBody(body)
+				});
+			}
 		});
 	};
 
@@ -370,45 +484,14 @@ export default function TransactionsPage() {
 		if (duplicating || !row?.id) return;
 		setDuplicating(true);
 		try {
-			const isTransfer = row.type === 'transfer_in' || row.type === 'transfer_out';
-			const categoryIds = row.categories?.length
-				? row.categories.map(Number)
-				: row.category != null
-					? [Number(row.category)]
-					: [];
-			const created = await post('/finance/transactions/', {
-				type: row.type,
-				title: row.title || '',
-				merchant: row.merchant || '',
-				amount: row.amount ?? '0.00',
-				note: row.note || '',
-				source: row.source ?? undefined,
-				category: isTransfer ? null : (row.category ?? null),
-				categories: isTransfer ? [] : categoryIds,
-				is_partial: row.type === 'expense' ? Boolean(row.is_partial) : false,
-				status: row.status || 'active',
-				date_created: todayISO(),
-				date_effective: todayISO()
-			});
-			if (row.type === 'expense' && Number(row.item_count) > 0 && created?.id != null) {
-				const items = await fetchAllPages(`/finance/transactions/${row.id}/items/`);
-				await Promise.all(
-					items.map((item) =>
-						post(`/finance/transactions/${created.id}/items/`, {
-							title: item.title,
-							cost: item.cost,
-							quantity: item.quantity,
-							unit: item.unit,
-							status: item.status
-						})
-					)
-				);
-			}
+			const snapshot = await buildTransactionSnapshot(row, { dates: 'today' });
+			const created = await recreateFromSnapshot(snapshot);
 			toast.success('Transaction duplicated.');
 			resetDefaultOrdering();
 			queryClient.invalidateQueries({ queryKey: ['finance-transactions'] });
 			queryClient.invalidateQueries({ queryKey: ['finance-balance'] });
 			if (created?.id != null) {
+				pushHistory({ type: 'create', id: created.id, snapshot });
 				setAutoEdit({
 					id: created.id,
 					field: 'title',
@@ -419,6 +502,21 @@ export default function TransactionsPage() {
 			toast.error('Could not duplicate transaction.');
 		} finally {
 			setDuplicating(false);
+		}
+	};
+
+	const confirmSingleDelete = async () => {
+		if (!deleteTarget?.id || removeTxn.isPending || deletePreparing) return;
+		setDeletePreparing(true);
+		try {
+			const snapshot = await buildTransactionSnapshot(deleteTarget, { dates: 'preserve' });
+			const deletedId = deleteTarget.id;
+			await removeTxn.mutateAsync(deletedId);
+			pushHistory({ type: 'delete', id: deletedId, snapshot });
+		} catch {
+			toast.error('Could not delete transaction.');
+		} finally {
+			setDeletePreparing(false);
 		}
 	};
 
@@ -671,6 +769,32 @@ export default function TransactionsPage() {
 		});
 	};
 
+	const reorderTxn = useCallback(
+		async (row, visualDirection) => {
+			if (!canEdit || !row?.id || reorderingId != null) return;
+			setReorderingId(row.id);
+			markPendingCells(row.id, ['day_order']);
+			try {
+				const { moved, patches } = await moveTransaction(row.id, visualDirection, {
+					ordering
+				});
+				if (!moved) {
+					toast.info('Nothing to move in that direction.');
+					return;
+				}
+				pushHistory({ type: 'reorder', id: row.id, patches });
+				await queryClient.invalidateQueries({ queryKey: ['finance-transactions'] });
+				queryClient.invalidateQueries({ queryKey: ['finance-balance'] });
+			} catch {
+				toast.error('Could not reorder transaction.');
+			} finally {
+				clearPendingCells(row.id, ['day_order']);
+				setReorderingId(null);
+			}
+		},
+		[canEdit, reorderingId, ordering, pushHistory, queryClient]
+	);
+
 	const commitCell = ({ id, field, value, patch }) => {
 		const body = patch ? { id, ...patch } : { id, [field]: value };
 
@@ -681,6 +805,15 @@ export default function TransactionsPage() {
 				return;
 			}
 			body.date_effective = iso;
+		}
+
+		if (Object.prototype.hasOwnProperty.call(body, 'amount')) {
+			const n = Number(body.amount);
+			if (!Number.isFinite(n) || n < 0) {
+				toast.error('Enter a valid amount.');
+				return;
+			}
+			body.amount = n.toFixed(2);
 		}
 
 		if (Array.isArray(body.categories)) {
@@ -731,6 +864,8 @@ export default function TransactionsPage() {
 		}
 
 		const { id: rowId, ...optimistic } = body;
+		const currentRow = rows.find((r) => r.id === rowId);
+		const before = editBeforeFromRow(currentRow, optimistic);
 		const pendingKeys = new Set(Object.keys(optimistic));
 		if (pendingKeys.has('category') || pendingKeys.has('categories')) {
 			pendingKeys.add('categories');
@@ -744,6 +879,9 @@ export default function TransactionsPage() {
 		});
 
 		updateTxn.mutate(body, {
+			onSuccess: () => {
+				pushHistory({ type: 'edit', id: rowId, before, after: optimistic });
+			},
 			onError: () => {
 				clearPendingCells(rowId, uiKeys);
 				queryClient.invalidateQueries({ queryKey: ['finance-transactions'] });
@@ -870,8 +1008,8 @@ export default function TransactionsPage() {
 				key: 'actions',
 				label: '',
 				type: 'actions',
-				actions: ['info', 'duplicate', 'delete'],
-				className: showAuthors ? 'w-[13rem]' : 'w-[11.25rem]',
+				actions: ['reorder', 'info', 'duplicate', 'delete'],
+				className: showAuthors ? 'w-[16.5rem]' : 'w-[14.75rem]',
 				leading: showAuthors
 					? (row) => (
 							<span className="mr-0.5 inline-flex items-center">
@@ -982,7 +1120,7 @@ export default function TransactionsPage() {
 	const deleteDialog = (
 		<Modal
 			open={Boolean(deleteTarget)}
-			onClose={() => !removeTxn.isPending && setDeleteTarget(null)}
+			onClose={() => !removeTxn.isPending && !deletePreparing && setDeleteTarget(null)}
 			title="Delete transaction"
 			size="sm"
 			footer={
@@ -990,14 +1128,14 @@ export default function TransactionsPage() {
 					<Button
 						variant="secondary"
 						onClick={() => setDeleteTarget(null)}
-						disabled={removeTxn.isPending}
+						disabled={removeTxn.isPending || deletePreparing}
 					>
 						Cancel
 					</Button>
 					<Button
 						variant="danger"
-						loading={removeTxn.isPending}
-						onClick={() => removeTxn.mutate(deleteTarget.id)}
+						loading={removeTxn.isPending || deletePreparing}
+						onClick={confirmSingleDelete}
 					>
 						Delete
 					</Button>
@@ -1007,7 +1145,7 @@ export default function TransactionsPage() {
 			<p className="text-muted text-sm">
 				Delete{' '}
 				<span className="text-fg font-medium">{deleteTarget?.title || 'this transaction'}</span>?
-				Line items will be removed. This cannot be undone.
+				Line items will be removed. You can undo from the toolbar.
 			</p>
 		</Modal>
 	);
@@ -1031,6 +1169,11 @@ export default function TransactionsPage() {
 					onRequestEdit={canEdit ? setEditTarget : undefined}
 					onAccounts={() => setAccountsOpen(true)}
 					onMove={canEdit ? () => setMoveOpen(true) : undefined}
+					onUndo={canEdit ? runUndo : undefined}
+					onRedo={canEdit ? runRedo : undefined}
+					canUndo={canUndoHistory}
+					canRedo={canRedoHistory}
+					historyBusy={historyBusy}
 					viewToggle={viewToggle}
 					view={view}
 					calendar={
@@ -1043,6 +1186,9 @@ export default function TransactionsPage() {
 							loading={calendarLoading}
 							error={calendarError}
 							aggregateOnly
+							canEdit={canEdit}
+							onReorder={canEdit ? reorderTxn : undefined}
+							reorderingId={reorderingId}
 						/>
 					}
 				/>
@@ -1063,8 +1209,11 @@ export default function TransactionsPage() {
 					saving={updateTxn.isPending}
 					onClose={() => setEditTarget(null)}
 					onSave={(body) => {
+						const { id: rowId, ...after } = body;
+						const before = editBeforeFromRow(editTarget, after);
 						updateTxn.mutate(body, {
 							onSuccess: () => {
+								pushHistory({ type: 'edit', id: rowId, before, after });
 								toast.success('Transaction updated.');
 								setEditTarget(null);
 							},
@@ -1152,6 +1301,7 @@ export default function TransactionsPage() {
 					search={search}
 					onSearchChange={setSearch}
 					searchPlaceholder="Search transactions…"
+					leading={historyButtons}
 					filters={[
 						{
 							key: 'horizon',
@@ -1177,6 +1327,9 @@ export default function TransactionsPage() {
 					transactions={calendarRows}
 					loading={calendarLoading}
 					error={calendarError}
+					canEdit={canEdit}
+					onReorder={canEdit ? reorderTxn : undefined}
+					reorderingId={reorderingId}
 				/>
 			) : (
 				<LoadingSwap loading={isLoading}>
@@ -1197,13 +1350,14 @@ export default function TransactionsPage() {
 							onAdd={canEdit ? addExpense : undefined}
 							onRequestDelete={canEdit ? setDeleteTarget : undefined}
 							onRequestDuplicate={canEdit ? duplicateTxn : undefined}
+							onRequestReorder={canEdit ? reorderTxn : undefined}
 							onRequestInfo={setInfoTarget}
 							onBulkDelete={canEdit ? setBulkDeleteIds : undefined}
 							onSelectionChange={onSelectionChange}
 							selectable={canEdit}
 							readOnly={!canEdit}
 							adding={createTxn.isPending || duplicating}
-							saving={updateTxn.isPending || duplicating}
+							saving={updateTxn.isPending || duplicating || reorderingId != null}
 							pendingCells={pendingCells}
 							autoEdit={autoEdit}
 							addLabel="New transaction"

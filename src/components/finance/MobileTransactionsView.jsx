@@ -4,10 +4,12 @@ import {
 	ArrowLeftRight,
 	BookUser,
 	Plus,
+	Redo2,
 	Search,
 	Settings,
 	SlidersHorizontal,
-	Trash2
+	Trash2,
+	Undo2
 } from 'lucide-react';
 
 import { cn, formatDate, hasUpcomingBalance } from '../../lib/format';
@@ -135,6 +137,11 @@ export function MobileTransactionsView({
 	onRequestEdit,
 	onAccounts,
 	onMove,
+	onUndo,
+	onRedo,
+	canUndo = false,
+	canRedo = false,
+	historyBusy = false,
 	viewToggle,
 	view = 'list',
 	calendar = null
@@ -201,6 +208,32 @@ export function MobileTransactionsView({
 							aria-label="Search transactions"
 						/>
 					</label>
+					{onUndo ? (
+						<Button
+							variant="secondary"
+							size="icon"
+							className="h-11 w-11 shrink-0 rounded-full"
+							onClick={onUndo}
+							disabled={!canUndo || historyBusy}
+							aria-label="Undo"
+							title="Undo"
+						>
+							<Undo2 size={18} />
+						</Button>
+					) : null}
+					{onRedo ? (
+						<Button
+							variant="secondary"
+							size="icon"
+							className="h-11 w-11 shrink-0 rounded-full"
+							onClick={onRedo}
+							disabled={!canRedo || historyBusy}
+							aria-label="Redo"
+							title="Redo"
+						>
+							<Redo2 size={18} />
+						</Button>
+					) : null}
 					{onAccounts && (
 						<Button
 							variant="secondary"
