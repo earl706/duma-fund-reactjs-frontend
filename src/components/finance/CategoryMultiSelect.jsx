@@ -105,9 +105,7 @@ export function CategoryMultiSelect({
 			{options.length === 0 ? (
 				<p className="text-muted px-0.5 py-1 text-xs">No expense categories.</p>
 			) : (
-				<div
-					className={cn('grid grid-cols-4 gap-1.5 overflow-y-auto md:grid-cols-8', gridClassName)}
-				>
+				<div className={cn('grid grid-cols-3 gap-1.5 overflow-y-auto', gridClassName)}>
 					{options.map((opt) => {
 						const id = Number(opt.value);
 						const checked = selected.includes(id);

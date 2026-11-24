@@ -127,6 +127,9 @@ export function ListboxOption({
 			role="option"
 			aria-selected={selected}
 			disabled={disabled}
+			// Keep trigger focused so sheet Select blur does not commit the old
+			// value before this click applies the new one.
+			onMouseDown={(e) => e.preventDefault()}
 			onClick={onClick}
 			className={cn(
 				'flex w-full cursor-pointer px-3 py-1.5 text-left text-sm',

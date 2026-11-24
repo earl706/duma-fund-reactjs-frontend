@@ -80,18 +80,18 @@ const SHEET_ICON_BTN =
  * Fill handle outside cell overflow. Positioned imperatively via `handleRef`
  * so selection changes do not need a React re-render.
  */
-function FillHandlePortal({ handleRef, onMouseDown }) {
+function FillHandlePortal({ handleRef, onPointerDown }) {
 	return createPortal(
 		<span
 			ref={handleRef}
 			role="button"
 			tabIndex={-1}
 			hidden
-			style={{ top: 0, left: 0 }}
+			style={{ top: 0, left: 0, touchAction: 'none' }}
 			className="border-primary bg-primary fixed z-[70] h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 cursor-crosshair rounded-full border-2"
 			title="Drag to fill cells below"
 			aria-label="Fill handle"
-			onMouseDown={onMouseDown}
+			onPointerDown={onPointerDown}
 		/>,
 		document.body
 	);
@@ -454,8 +454,9 @@ export function DataSheet({
 			}
 		}
 
-		// Fill handle on bottom-right of selection (hidden while editing or dragging).
-		if (!cellAnchor || !selection || dragging || editRef.current) {
+		// Keep handle visible while dragging — hiding it drops pointer capture and
+		// cancels the gesture (especially touch). Park it on the preview end row.
+		if (!cellAnchor || !selection || editRef.current) {
 			hideHandle();
 			return;
 		}
@@ -469,7 +470,8 @@ export function DataSheet({
 			hideHandle();
 			return;
 		}
-		const handleRowId = rows[selection.maxRow]?.id;
+		const handleRowIdx = dragging && fillPreview ? fillPreview.maxRow : selection.maxRow;
+		const handleRowId = rows[handleRowIdx]?.id;
 		if (handleRowId == null || !handle) {
 			hideHandle();
 			return;
@@ -752,6 +754,7 @@ export function DataSheet({
 	};
 
 	const startFillDrag = (e) => {
+		if (e.pointerType === 'mouse' && e.button !== 0) return;
 		e.preventDefault();
 		e.stopPropagation();
 		const cellAnchor = cellAnchorRef.current;
@@ -760,6 +763,14 @@ export function DataSheet({
 		if (!col || !isFillableCell(col)) return;
 
 		const source = { ...cellAnchor };
+		const handleEl = e.currentTarget;
+		// Capture before paint so the gesture survives handle repositioning.
+		try {
+			handleEl?.setPointerCapture?.(e.pointerId);
+		} catch {
+			/* ignore */
+		}
+
 		fillDragging.current = true;
 		fillPreviewEndRef.current = source;
 		paintRef.current();
@@ -774,8 +785,16 @@ export function DataSheet({
 		};
 
 		const onUp = (ev) => {
-			document.removeEventListener('mousemove', onMove);
-			document.removeEventListener('mouseup', onUp);
+			document.removeEventListener('pointermove', onMove);
+			document.removeEventListener('pointerup', onUp);
+			document.removeEventListener('pointercancel', onUp);
+			try {
+				if (handleEl?.hasPointerCapture?.(ev.pointerId)) {
+					handleEl.releasePointerCapture(ev.pointerId);
+				}
+			} catch {
+				/* ignore */
+			}
 			fillDragging.current = false;
 			const rowId = rowIdAtClientY(ev.clientY);
 			const end =
@@ -785,8 +804,9 @@ export function DataSheet({
 			paintRef.current();
 		};
 
-		document.addEventListener('mousemove', onMove);
-		document.addEventListener('mouseup', onUp);
+		document.addEventListener('pointermove', onMove);
+		document.addEventListener('pointerup', onUp);
+		document.addEventListener('pointercancel', onUp);
 	};
 
 	const commitEdit = (overrideValue, overrideUnit) => {
@@ -888,6 +908,9 @@ export function DataSheet({
 		};
 		const onDocPointerDown = (e) => {
 			if (editRef.current) return;
+			// Fill handle is portaled to document.body — not under sheetRoot.
+			const handle = fillHandleRef.current;
+			if (handle && (e.target === handle || handle.contains(e.target))) return;
 			const root = sheetRootRef.current;
 			if (!root || root.contains(e.target)) return;
 			clearCellSelection();
@@ -1249,6 +1272,7 @@ export function DataSheet({
 															<SheetOverlay
 																anchor={overlayAnchor}
 																overlayRef={editorRef}
+																minWidth={360}
 																preferAbove={preferAbove}
 																onMouseDown={() => {
 																	skipBlurAction.current = true;
@@ -1466,7 +1490,7 @@ export function DataSheet({
 					</Button>
 				</div>
 			)}
-			<FillHandlePortal handleRef={fillHandleRef} onMouseDown={startFillDrag} />
+			<FillHandlePortal handleRef={fillHandleRef} onPointerDown={startFillDrag} />
 		</div>
 	);
 }

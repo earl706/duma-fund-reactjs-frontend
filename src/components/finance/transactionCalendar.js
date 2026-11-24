@@ -136,6 +136,12 @@ export function dayTotals(txns) {
 	let moneyIn = 0;
 	let moneyOut = 0;
 	for (const txn of txns || []) {
+		// Internal wallet move: principal nets to zero; only fee is outflow.
+		if (txn.type === 'transfer_out' && txn.to_source != null) {
+			const fee = Number(txn.fee) || 0;
+			if (fee > 0) moneyOut += fee;
+			continue;
+		}
 		const amount = Number(txn.amount) || 0;
 		if (isInflowType(txn.type)) moneyIn += amount;
 		else if (isOutflowType(txn.type)) moneyOut += amount;
@@ -206,6 +212,11 @@ export function hourSeries(txns) {
 			typeof txn.created_at === 'string' ? parseISO(txn.created_at) : new Date(txn.created_at);
 		if (Number.isNaN(dt.getTime())) continue;
 		const hour = dt.getHours();
+		if (txn.type === 'transfer_out' && txn.to_source != null) {
+			const fee = Number(txn.fee) || 0;
+			if (fee > 0) points[hour].moneyOut += fee;
+			continue;
+		}
 		const amount = Number(txn.amount) || 0;
 		if (isInflowType(txn.type)) points[hour].moneyIn += amount;
 		else if (isOutflowType(txn.type)) points[hour].moneyOut += amount;

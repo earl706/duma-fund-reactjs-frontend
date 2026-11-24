@@ -130,6 +130,10 @@ export default function TransactionsPage() {
 	const queryClient = useQueryClient();
 	const mobile = useMobileLayout();
 	const { data: balance } = useFinanceBalance();
+	const walletBalanceChips = useMemo(() => {
+		const list = balance?.sources || [];
+		return list.filter((s) => s.status === 'active' && Number(s.balance) !== 0);
+	}, [balance?.sources]);
 	const canEdit = useCanEditLedger();
 	const profileId = useActiveProfileId();
 	const user = useAuthStore((s) => s.user);
@@ -830,15 +834,16 @@ export default function TransactionsPage() {
 			body.source = Number(body.source);
 		}
 
+		const currentRow = rows.find((r) => r.id === id);
+		const nextType = body.type ?? currentRow?.type;
+
 		// Type changes must carry a compatible category (or none for transfers).
 		if (body.type === 'transfer_in' || body.type === 'transfer_out') {
 			body.category = null;
 			body.categories = [];
 			body.is_partial = false;
 		} else if (body.type === 'income') {
-			const current =
-				allCategories.get(body.category) ||
-				allCategories.get(rows.find((r) => r.id === id)?.category);
+			const current = allCategories.get(body.category) || allCategories.get(currentRow?.category);
 			if (!current || current.kind !== 'income') {
 				if (!defaultIncomeCategoryId) {
 					toast.error('Create an income category first.');
@@ -849,8 +854,7 @@ export default function TransactionsPage() {
 			body.categories = [];
 			body.is_partial = false;
 		} else if (body.type === 'expense') {
-			const row = rows.find((r) => r.id === id);
-			const current = allCategories.get(body.category) || allCategories.get(row?.category);
+			const current = allCategories.get(body.category) || allCategories.get(currentRow?.category);
 			if (!current || current.kind !== 'expense') {
 				if (!defaultExpenseCategoryId) {
 					toast.error('Create an expense category first.');
@@ -859,12 +863,17 @@ export default function TransactionsPage() {
 				body.category = defaultExpenseCategoryId;
 				body.categories = [defaultExpenseCategoryId];
 			} else if (!body.categories?.length) {
-				body.categories = row?.categories?.length ? row.categories : [body.category];
+				body.categories = currentRow?.categories?.length ? currentRow.categories : [body.category];
 			}
 		}
 
+		// Moves only: clear stale to_source/fee when type is not transfer_out.
+		if (nextType !== 'transfer_out' && (currentRow?.to_source != null || body.type)) {
+			body.to_source = null;
+			body.fee = '0.00';
+		}
+
 		const { id: rowId, ...optimistic } = body;
-		const currentRow = rows.find((r) => r.id === rowId);
 		const before = editBeforeFromRow(currentRow, optimistic);
 		const pendingKeys = new Set(Object.keys(optimistic));
 		if (pendingKeys.has('category') || pendingKeys.has('categories')) {
@@ -1255,43 +1264,66 @@ export default function TransactionsPage() {
 					className="mb-0"
 					settingsShortcut
 					actions={
-						<div className="flex flex-wrap gap-2">
-							<Button variant="secondary" onClick={() => setAccountsOpen(true)}>
-								<BookUser size={16} /> Accounts
-							</Button>
-							{canEdit && (
-								<Button variant="secondary" onClick={() => setMoveOpen(true)}>
-									<ArrowLeftRight size={16} /> Move
+						<div className="flex flex-col items-end gap-1.5">
+							<div className="flex flex-wrap justify-end gap-2">
+								<Button variant="secondary" onClick={() => setAccountsOpen(true)}>
+									<BookUser size={16} /> Accounts
 								</Button>
-							)}
-							<Button variant="secondary" onClick={exportCsv} loading={csvBusy && !importDraft}>
-								<FileDown size={16} /> Export
-							</Button>
-							{canEdit ? (
-								<>
-									<Button
-										variant="secondary"
-										onClick={() => fileInputRef.current?.click()}
-										disabled={csvBusy}
-									>
-										<FileUp size={16} /> Import
+								{canEdit && (
+									<Button variant="secondary" onClick={() => setMoveOpen(true)}>
+										<ArrowLeftRight size={16} /> Move
 									</Button>
-									<input
-										ref={fileInputRef}
-										type="file"
-										accept=".csv,text/csv,text/plain"
-										className="hidden"
-										onChange={onPickCsv}
-									/>
-									{!mobile && (
-										<Button variant="secondary" onClick={() => setScanOpen(true)}>
-											<ScanLine size={16} /> Scan receipt
+								)}
+								<Button variant="secondary" onClick={exportCsv} loading={csvBusy && !importDraft}>
+									<FileDown size={16} /> Export
+								</Button>
+								{canEdit ? (
+									<>
+										<Button
+											variant="secondary"
+											onClick={() => fileInputRef.current?.click()}
+											disabled={csvBusy}
+										>
+											<FileUp size={16} /> Import
 										</Button>
-									)}
-									<Button onClick={addExpense} loading={createTxn.isPending}>
-										<Plus size={16} /> New Transaction
-									</Button>
-								</>
+										<input
+											ref={fileInputRef}
+											type="file"
+											accept=".csv,text/csv,text/plain"
+											className="hidden"
+											onChange={onPickCsv}
+										/>
+										{!mobile && (
+											<Button variant="secondary" onClick={() => setScanOpen(true)}>
+												<ScanLine size={16} /> Scan receipt
+											</Button>
+										)}
+										<Button onClick={addExpense} loading={createTxn.isPending}>
+											<Plus size={16} /> New
+										</Button>
+									</>
+								) : null}
+							</div>
+							{walletBalanceChips.length > 0 ? (
+								<span
+									className="text-muted flex max-w-full flex-wrap items-baseline justify-end gap-x-2.5 gap-y-0.5 text-xs font-medium sm:text-sm"
+									aria-label="Wallet balances"
+								>
+									{walletBalanceChips.map((src, i) => (
+										<span key={src.id} className="inline-flex min-w-0 items-baseline gap-1">
+											{i > 0 ? (
+												<span className="text-muted/45 select-none" aria-hidden>
+													·
+												</span>
+											) : null}
+											<span className="truncate">{src.name}</span>
+											<CostAmount
+												value={src.balance}
+												className="text-muted shrink-0 font-semibold"
+											/>
+										</span>
+									))}
+								</span>
 							) : null}
 						</div>
 					}
